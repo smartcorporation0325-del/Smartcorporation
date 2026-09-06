@@ -36,6 +36,7 @@ export interface HubSpotService {
   getDealsForContact(contactId: string): Promise<HubSpotDeal[]>;
   getOwner(ownerId: string): Promise<HubSpotOwner | null>;
   getUpcomingTasksForContact(contactId: string): Promise<HubSpotTask[]>;
+  testConnection(): Promise<{ ok: boolean; detail: string }>;
   // Write capabilities — architecture only, disabled by default (Section 19).
   createNoteForContact(contactId: string, note: string): Promise<{ disabled: true } | { id: string }>;
 }
@@ -131,6 +132,15 @@ class LiveHubSpotService implements HubSpotService {
   async createNoteForContact(): Promise<{ disabled: true }> {
     return { disabled: true };
   }
+
+  async testConnection(): Promise<{ ok: boolean; detail: string }> {
+    try {
+      const data = await this.request<{ results: unknown[] }>("/crm/v3/owners/?limit=1");
+      return { ok: true, detail: `Connected. ${data.results?.length ?? 0} owner(s) visible in a quick check.` };
+    } catch (err) {
+      return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+    }
+  }
 }
 
 function mapDealStatus(stage: string | null | undefined): "open" | "closed_won" | "closed_lost" {
@@ -159,6 +169,9 @@ class DemoHubSpotService implements HubSpotService {
   }
   async createNoteForContact(): Promise<{ disabled: true }> {
     return { disabled: true };
+  }
+  async testConnection(): Promise<{ ok: boolean; detail: string }> {
+    return { ok: false, detail: "HUBSPOT_ACCESS_TOKEN is not configured." };
   }
 }
 

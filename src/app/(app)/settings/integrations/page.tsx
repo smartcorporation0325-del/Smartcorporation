@@ -1,6 +1,7 @@
 import { getIntegrationStatuses } from "@/lib/data/integrations";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { IntegrationActions } from "@/components/settings/integration-actions";
 
 export default function IntegrationsSettingsPage() {
   const statuses = getIntegrationStatuses();
@@ -29,6 +30,7 @@ export default function IntegrationsSettingsPage() {
                   Write-back to {s.name.split(" ")[0]} is architected but disabled by default in this MVP.
                 </p>
               )}
+              <IntegrationActions provider={s.provider} />
             </CardContent>
           </Card>
         ))}

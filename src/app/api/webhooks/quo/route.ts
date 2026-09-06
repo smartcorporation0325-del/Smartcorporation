@@ -1,19 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getQuoService } from "@/services/quo";
-import { rerunAnalysisForCall } from "@/lib/pipeline/analyze";
+import { ingestQuoCall } from "@/lib/sync/quo-sync";
+import { writeSyncLog } from "@/lib/data/sync-logs";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
+import type { QuoCallDetail, QuoTranscript } from "@/services/quo/types";
 
 // Quo (formerly OpenPhone) webhook receiver (Section 20). Verifies the signature,
-// handles duplicate deliveries idempotently via quo_call_id uniqueness, and marks
-// transcript_status = 'pending' when the transcript isn't ready yet rather than
-// failing the whole ingest.
+// handles duplicate deliveries idempotently (see ingestQuoCall's quo_call_id check),
+// and marks transcript_status = 'pending' when the transcript isn't ready yet rather
+// than failing the whole ingest.
+//
+// Payload shape note: this environment cannot reach quo.com's docs to confirm the
+// exact webhook body (see services/quo/index.ts header). We accept a reasonably
+// shaped payload (a `call` object plus an optional `transcript` object) and log the
+// raw payload_reference either way, so a mismatch is diagnosable from sync logs
+// rather than a silent failure — adjust `parsePayload` once verified.
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const signature = req.headers.get("x-quo-signature");
 
   const quo = getQuoService();
   if (!quo.verifyWebhookSignature(rawBody, signature)) {
+    await writeSyncLog({ provider: "quo", action: "webhook", status: "error", errorMessage: "invalid signature" });
     return NextResponse.json({ error: "invalid signature" }, { status: 401 });
   }
 
@@ -24,6 +33,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
   }
 
+  const parsed = parsePayload(payload);
+  if (!parsed) {
+    await writeSyncLog({ provider: "quo", action: "webhook", status: "error", errorMessage: "unrecognized payload shape", payloadReference: rawBody.slice(0, 500) });
+    return NextResponse.json({ error: "unrecognized payload shape" }, { status: 400 });
+  }
+
   if (!isSupabaseConfigured()) {
     // Demo mode has no durable call ingest target; acknowledge receipt without
     // pretending to process it so Quo doesn't retry indefinitely.
@@ -31,58 +46,54 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = getSupabaseAdminClient();
-  if (!admin) return NextResponse.json({ error: "supabase admin not configured" }, { status: 500 });
+  const repIdForQuoUser = async (quoUserId: string | null): Promise<string | null> => {
+    if (!quoUserId || !admin) return null;
+    const { data } = await admin.from("sales_reps").select("id").eq("quo_user_id", quoUserId).maybeSingle();
+    return data?.id ?? null;
+  };
 
-  const event = payload as { id?: string; type?: string; callId?: string };
-  if (!event.callId) return NextResponse.json({ error: "missing callId" }, { status: 400 });
+  const result = await ingestQuoCall(parsed.call, parsed.transcript, repIdForQuoUser);
 
-  await admin.from("sync_logs").insert({
+  await writeSyncLog({
     provider: "quo",
-    action: `webhook:${event.type ?? "unknown"}`,
-    status: "success",
-    payload_reference: event.callId,
+    action: `webhook:${parsed.eventType}`,
+    status: result.error ? "error" : "success",
+    payloadReference: parsed.call.id,
+    errorMessage: result.error ?? null,
   });
 
-  // Idempotency: if this Quo call is already known, don't create a duplicate row or
-  // re-trigger analysis.
-  const { data: existing } = await admin.from("calls").select("id, analysis_status").eq("quo_call_id", event.callId).maybeSingle();
+  if (result.error) return NextResponse.json({ error: result.error }, { status: 500 });
+  return NextResponse.json({ received: true, callId: result.callId, created: result.created });
+}
 
-  if (existing) {
-    if (existing.analysis_status === "pending") {
-      await rerunAnalysisForCall(existing.id);
-    }
-    return NextResponse.json({ received: true, callId: existing.id, duplicate: true });
-  }
+function parsePayload(payload: unknown): { eventType: string; call: QuoCallDetail; transcript: QuoTranscript | null } | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const p = payload as Record<string, unknown>;
+  const call = p.call as Record<string, unknown> | undefined;
+  if (!call || typeof call.id !== "string") return null;
 
-  const call = await quo.getCall(event.callId);
-  const transcript = await quo.getTranscript(event.callId);
+  const callDetail: QuoCallDetail = {
+    id: call.id,
+    conversationId: (call.conversationId as string) ?? null,
+    inboxPhoneNumber: (call.inboxPhoneNumber as string) ?? "",
+    participantPhoneNumber: (call.participantPhoneNumber as string) ?? null,
+    userId: (call.userId as string) ?? null,
+    direction: (call.direction as "inbound" | "outbound") ?? "inbound",
+    status: (call.status as QuoCallDetail["status"]) ?? "completed",
+    createdAt: (call.createdAt as string) ?? new Date().toISOString(),
+    durationSeconds: (call.durationSeconds as number) ?? null,
+    recordingUrl: (call.recordingUrl as string) ?? null,
+  };
 
-  const { data: newCall, error } = await admin
-    .from("calls")
-    .insert({
-      quo_call_id: event.callId,
-      started_at: call?.startedAt ?? new Date().toISOString(),
-      ended_at: call?.endedAt ?? null,
-      duration_seconds: call?.durationSeconds ?? null,
-      direction: call?.direction ?? "unknown",
-      status: call?.status ?? "completed",
-      recording_url_or_reference: call?.recordingReference ?? null,
-      transcript_status: transcript?.status === "ready" ? "ready" : "pending",
-      analysis_status: transcript?.status === "ready" ? "pending" : "none",
-      source: "quo",
-    })
-    .select()
-    .single();
+  const rawTranscript = p.transcript as Record<string, unknown> | undefined;
+  const transcript: QuoTranscript | null = rawTranscript
+    ? {
+        callId: call.id,
+        status: (rawTranscript.status as QuoTranscript["status"]) ?? "pending",
+        segments: Array.isArray(rawTranscript.segments) ? (rawTranscript.segments as QuoTranscript["segments"]) : [],
+        aiSummary: (rawTranscript.aiSummary as string) ?? null,
+      }
+    : null;
 
-  if (error || !newCall) {
-    return NextResponse.json({ error: error?.message ?? "failed to create call" }, { status: 500 });
-  }
-
-  if (transcript?.status === "ready" && transcript.segments.length) {
-    const transcriptText = transcript.segments.map((s) => `${s.speaker}: ${s.text}`).join("\n");
-    await admin.from("call_transcripts").insert({ call_id: newCall.id, transcript_text: transcriptText, source: "quo" });
-    await rerunAnalysisForCall(newCall.id);
-  }
-
-  return NextResponse.json({ received: true, callId: newCall.id });
+  return { eventType: (p.type as string) ?? "unknown", call: callDetail, transcript };
 }

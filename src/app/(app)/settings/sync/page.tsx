@@ -1,19 +1,11 @@
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSyncLogs } from "@/lib/data/sync-logs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/utils";
 
 export default async function SyncLogsPage() {
-  let logs: { id: string; provider: string; action: string; status: string; error_message: string | null; created_at: string }[] = [];
-
-  if (isSupabaseConfigured()) {
-    const supabase = await getSupabaseServerClient();
-    if (supabase) {
-      const { data } = await supabase.from("sync_logs").select("*").order("created_at", { ascending: false }).limit(50);
-      logs = data ?? [];
-    }
-  }
+  const logs = await getSyncLogs();
 
   return (
     <div className="space-y-6">
@@ -28,7 +20,7 @@ export default async function SyncLogsPage() {
           <CardDescription>
             {isSupabaseConfigured()
               ? "Reading from the sync_logs table."
-              : "No sync log storage in demo mode — connect Supabase to persist sync history. Phase 2/3 will populate this automatically as Quo/HubSpot syncs run."}
+              : "Demo mode: logs are held in memory for this server process. Use Test Connection / Sync Now on Settings > Integrations to generate entries."}
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">

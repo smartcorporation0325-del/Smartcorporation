@@ -5,6 +5,7 @@ import { rerunAnalysisForCall } from "@/lib/pipeline/analyze";
 import { updateManualCall, getManualCallById } from "@/lib/data/manual-store";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
+import { manuallyAssociateCall } from "@/lib/matching/associate";
 
 export async function rerunAnalysisAction(callId: string) {
   const result = await rerunAnalysisForCall(callId);
@@ -41,6 +42,12 @@ export async function attachTranscriptAction(callId: string, transcriptText: str
   }
 
   const result = await rerunAnalysisForCall(callId);
+  revalidatePath(`/calls/${callId}`);
+  return result;
+}
+
+export async function associateContactAction(callId: string, phone: string, email: string) {
+  const result = await manuallyAssociateCall(callId, { phone: phone || undefined, email: email || undefined });
   revalidatePath(`/calls/${callId}`);
   return result;
 }

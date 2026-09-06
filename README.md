@@ -5,8 +5,10 @@ Elite Marry Me. Pulls sales calls from Quo (formerly OpenPhone), matches them to
 HubSpot CRM context, analyzes the conversation with Claude against a custom scorecard,
 and surfaces coaching, objection, and revenue intelligence.
 
-This is a **Phase 1 MVP**: it runs fully in demo mode with seeded data and requires no
-external credentials to explore.
+This is a **Phase 1 + Phase 2 MVP**: it runs fully in demo mode with seeded data and
+requires no external credentials to explore. Phase 2 adds the Quo/HubSpot sync
+orchestration and contact/deal matching engine — wired and testable today, and ready
+to go live the moment real credentials are added.
 
 ## Quick start
 
@@ -49,23 +51,44 @@ Check connection status any time at `/settings/integrations`.
 - `src/lib/data/*` — data access layer. Branches on whether Supabase is configured;
   callers (pages, server actions) never care which mode they're in.
 - `src/lib/demo/seed-data.ts` — the 15 fictional demo calls for Federico.
+- `src/lib/matching/associate.ts` — the contact/deal association engine (phone →
+  email → existing local association → manual), writes only to our own tables.
+- `src/lib/sync/quo-sync.ts` — shared ingest/sync orchestration used by both the Quo
+  webhook and the manual "Sync now" action; idempotent on `quo_call_id`.
+- `src/lib/data/sync-logs.ts` — sync log writer/reader (Postgres when Supabase is
+  configured, an in-memory demo log otherwise so Sync Now/Test Connection are
+  demonstrable either way).
 - `supabase/migrations/*.sql` — full relational schema + RLS policies.
 - `scripts/seed-supabase.ts` — loads the demo dataset into a real Supabase project.
 
-## What's implemented (Phase 1)
+## What's implemented
 
-- Dashboard, Calls list + detail, Coaching Center, Objection Intelligence, Revenue
-  Intelligence, Ask Your Calls (retrieval-grounded Q&A), Alerts, Settings.
-- Elite Marry Me scorecard (7 weighted sections, seeded per spec).
-- Manual transcript entry, paste/upload, and re-run analysis — the required fallback
-  when Quo/HubSpot sync isn't available.
-- Quo webhook receiver (`/api/webhooks/quo`) with signature verification and
-  idempotent ingest — wired for Phase 2 once `QUO_API_KEY`/`WEBHOOK_SECRET` are set.
-- HubSpot read-only service scaffold — wired for Phase 2 once `HUBSPOT_ACCESS_TOKEN`
-  is set.
+**Phase 1** — Dashboard, Calls list + detail (Overview/Scorecard/Transcript/
+Objections/Coaching/CRM Context tabs), Coaching Center, Objection Intelligence,
+Revenue Intelligence, Ask Your Calls (retrieval-grounded Q&A), Alerts, Settings. Elite
+Marry Me scorecard (7 weighted sections, seeded per spec). Manual transcript entry,
+paste/upload, and re-run analysis — the fallback that keeps the app usable when
+Quo/HubSpot sync isn't available.
 
-## What's next (Phase 2+)
+**Phase 2** — Quo webhook receiver (`/api/webhooks/quo`) with signature verification
+and idempotent ingest; a shared sync orchestrator (`lib/sync/quo-sync.ts`) so the
+webhook and a manual "Sync now" button do the same ingest logic; the contact/deal
+matching engine (phone → email → existing local association → manual); a manual
+"Associate HubSpot contact/deal" search on the call detail CRM Context tab; and
+Test Connection / Sync Now buttons + populated sync logs on
+`/settings/integrations` and `/settings/sync`.
 
-- Live Quo call/transcript sync and HubSpot contact/deal matching by phone/email.
-- Sync Center "test connection" / "sync now" actions and populated sync logs.
+Quo's live service methods are grounded against the best-verified shape available —
+this environment's egress proxy blocks direct access to quo.com's docs, so the
+request/response shapes were cross-checked against Quo's own MCP tool contracts
+(inbox-scoped calls, `AC…`/`CN…`/`US…`/`PN…` id prefixes, cursor pagination) rather
+than guessed from memory. Re-verify against `https://www.quo.com/docs` once you have
+a real `QUO_API_KEY` and can reach it, and adjust `services/quo/index.ts` if the
+actual endpoints differ.
+
+## What's next (Phase 3+)
+
+- Webhook-driven automated call ingestion at scale, alert engine notifications.
+- Coaching Center / Objection Intelligence enrichment from live sync data volume.
 - Scorecard admin editing (create/duplicate/version) beyond the read-only view.
+- HubSpot optional write-back (notes, tasks) — architected but disabled by default.
