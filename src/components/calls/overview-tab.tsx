@@ -1,5 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { SuggestedFollowUp } from "@/components/calls/suggested-follow-up";
 import { titleCase } from "@/lib/utils";
 import type { CallAnalysisFull } from "@/types/db";
 
@@ -14,6 +15,11 @@ export function OverviewTab({ analysis }: { analysis: CallAnalysisFull }) {
         <div className="mt-3 flex flex-wrap gap-2">
           <Badge tone="accent">Outcome: {titleCase(analysis.call_outcome ?? "unknown")}</Badge>
           <Badge tone="neutral">Sentiment: {titleCase(analysis.sentiment ?? "unknown")}</Badge>
+          {analysis.buying_intent && (
+            <Badge tone={analysis.buying_intent === "high" ? "good" : analysis.buying_intent === "medium" ? "warn" : "neutral"}>
+              Buying Intent: {titleCase(analysis.buying_intent)}
+            </Badge>
+          )}
         </div>
       </Card>
 
@@ -55,17 +61,29 @@ export function OverviewTab({ analysis }: { analysis: CallAnalysisFull }) {
       </div>
 
       <Card className="p-5">
-        <h4 className="mb-3 text-sm font-semibold">Next actions</h4>
+        <h4 className="mb-3 text-sm font-semibold">Smart Next Action</h4>
         {analysis.next_actions.length === 0 ? (
           <p className="text-sm text-muted">No next actions recorded.</p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-3">
             {analysis.next_actions.map((n) => (
-              <li key={n.id} className="flex items-center justify-between rounded-lg bg-black/[0.02] px-3 py-2 text-sm">
-                <span>{n.action}</span>
-                <span className="text-xs text-muted">
-                  {n.owner} {n.due_date ? `• due ${n.due_date.slice(0, 10)}` : ""}
-                </span>
+              <li key={n.id} className="rounded-lg bg-black/[0.02] p-3 text-sm">
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  {n.action_type && <Badge tone="accent">{titleCase(n.action_type)}</Badge>}
+                  {n.priority && <Badge tone={n.priority === "high" ? "bad" : n.priority === "medium" ? "warn" : "neutral"}>{titleCase(n.priority)} priority</Badge>}
+                  <span className="text-xs text-muted">
+                    {n.owner}
+                    {n.due_date ? ` • due ${n.due_date.slice(0, 10)}` : ""}
+                    {n.due_time ? ` ${n.due_time}` : ""}
+                  </span>
+                </div>
+                <p className="text-foreground/80">{n.action}</p>
+                {n.close_strategy && (
+                  <p className="mt-1.5 border-l-2 border-accent pl-2 text-xs text-muted">
+                    <span className="font-medium text-accent">Close strategy: </span>
+                    {n.close_strategy}
+                  </p>
+                )}
               </li>
             ))}
           </ul>
@@ -76,6 +94,8 @@ export function OverviewTab({ analysis }: { analysis: CallAnalysisFull }) {
           </div>
         )}
       </Card>
+
+      <SuggestedFollowUp sms={analysis.follow_up_sms} email={analysis.follow_up_email} />
     </div>
   );
 }

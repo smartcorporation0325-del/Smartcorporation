@@ -13,6 +13,9 @@ Rules:
 - When information is unknown or not discussed, say so explicitly (use "UNKNOWN" or an empty array) rather than inventing it.
 - Every score and every coaching criticism must cite a specific piece of evidence (a paraphrase or quote from the transcript), not a generic statement.
 - "Close probability" is an estimate based on conversation signals, not a guarantee. Be conservative.
+- For "nextActions": be operational and specific (e.g. "Send the Midtown rooftop video today and call the client tomorrow at 6 PM"), never a generic "follow up with the client." NEVER invent a dueDate or dueTime the client did not actually give you — leave them null rather than guessing.
+- For "followUpMessages": write a ready-to-send SMS and email in a concise, warm, premium tone appropriate for a luxury event planning brand. Reference only what was actually discussed on the call.
+- For "whyThisMatters": one or two sentences of business impact for a manager skimming the call, not generic coaching language.
 - Return ONLY valid JSON matching the exact schema you are given. No markdown fences, no commentary.`;
 
 export function buildScorecardPromptSection(scorecard: {
@@ -94,6 +97,7 @@ export const JSON_SHAPE_DESCRIPTION = `{
   "overallScore": number (0-100),
   "closeProbability": number (0-100),
   "sentiment": "positive"|"neutral"|"mixed"|"negative",
+  "buyingIntent": "low"|"medium"|"high",
   "customerIntent": string,
   "scorecard": [{ "section": string, "score": number, "maxScore": number, "criteria": [{ "criterion": string, "score": number, "maxScore": number, "explanation": string, "evidence": string }] }],
   "objections": [{ "type": string, "description": string, "evidence": string, "severity": "low"|"medium"|"high", "handled": boolean, "handlingQuality": number (0-10), "recommendedResponse": string }],
@@ -102,8 +106,10 @@ export const JSON_SHAPE_DESCRIPTION = `{
   "strengths": [string],
   "weaknesses": [string],
   "coachingRecommendations": [{ "category": string, "type": "strength"|"weakness", "insight": string, "recommendation": string }],
-  "nextActions": [{ "action": string, "owner": string, "dueDate": string|null, "priority": "low"|"medium"|"high" }],
+  "nextActions": [{ "actionType": "send_material"|"call"|"email"|"text"|"schedule_meeting"|"internal_task"|"other", "actionDescription": string, "dueDate": string|null, "dueTime": string|null, "owner": string, "priority": "low"|"medium"|"high", "closeStrategy": string }],
   "followUpAssessment": { "hasScheduledFollowUp": boolean, "quality": "clear"|"vague"|"missing", "notes": string },
   "dealRiskFactors": [string],
-  "managerSummary": string
+  "managerSummary": string,
+  "whyThisMatters": string,
+  "followUpMessages": { "sms": string, "email": string }
 }`;

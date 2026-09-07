@@ -37,8 +37,11 @@ export interface HubSpotService {
   getOwner(ownerId: string): Promise<HubSpotOwner | null>;
   getUpcomingTasksForContact(contactId: string): Promise<HubSpotTask[]>;
   testConnection(): Promise<{ ok: boolean; detail: string }>;
-  // Write capabilities — architecture only, disabled by default (Section 19).
+  // Write capabilities. HubSpot is read-only everywhere in this app EXCEPT the
+  // explicit, human-approved "Approve & Push to HubSpot" action (Section 8) — never
+  // called from any automatic sync path.
   createNoteForContact(contactId: string, note: string): Promise<{ disabled: true } | { id: string }>;
+  createTaskForContact(contactId: string, task: { subject: string; body: string; dueDate?: string | null; priority?: "low" | "medium" | "high" }): Promise<{ disabled: true } | { id: string }>;
 }
 
 class LiveHubSpotService implements HubSpotService {
@@ -129,8 +132,48 @@ class LiveHubSpotService implements HubSpotService {
     return [];
   }
 
-  async createNoteForContact(): Promise<{ disabled: true }> {
-    return { disabled: true };
+  // Real write, only ever invoked from the "Approve & Push to HubSpot" server action
+  // after explicit manager confirmation — never from a sync/webhook path.
+  async createNoteForContact(contactId: string, note: string): Promise<{ id: string }> {
+    const created = await this.request<{ id: string }>("/crm/v3/objects/notes", {
+      method: "POST",
+      body: JSON.stringify({
+        properties: { hs_note_body: note, hs_timestamp: Date.now() },
+        associations: [
+          {
+            to: { id: contactId },
+            types: [{ associationCategory: "HUBSPOT_DEFINED", associationTypeId: 202 }], // note -> contact
+          },
+        ],
+      }),
+    });
+    return { id: created.id };
+  }
+
+  async createTaskForContact(
+    contactId: string,
+    task: { subject: string; body: string; dueDate?: string | null; priority?: "low" | "medium" | "high" }
+  ): Promise<{ id: string }> {
+    const priorityMap = { low: "LOW", medium: "MEDIUM", high: "HIGH" } as const;
+    const created = await this.request<{ id: string }>("/crm/v3/objects/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        properties: {
+          hs_task_subject: task.subject,
+          hs_task_body: task.body,
+          hs_task_status: "NOT_STARTED",
+          hs_task_priority: priorityMap[task.priority ?? "medium"],
+          hs_timestamp: task.dueDate ? new Date(task.dueDate).getTime() : Date.now(),
+        },
+        associations: [
+          {
+            to: { id: contactId },
+            types: [{ associationCategory: "HUBSPOT_DEFINED", associationTypeId: 204 }], // task -> contact
+          },
+        ],
+      }),
+    });
+    return { id: created.id };
   }
 
   async testConnection(): Promise<{ ok: boolean; detail: string }> {
@@ -168,6 +211,9 @@ class DemoHubSpotService implements HubSpotService {
     return [];
   }
   async createNoteForContact(): Promise<{ disabled: true }> {
+    return { disabled: true };
+  }
+  async createTaskForContact(): Promise<{ disabled: true }> {
     return { disabled: true };
   }
   async testConnection(): Promise<{ ok: boolean; detail: string }> {

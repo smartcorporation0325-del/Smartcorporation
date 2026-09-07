@@ -9,6 +9,14 @@ import { ObjectionsTab } from "@/components/calls/objections-tab";
 import { CoachingTab } from "@/components/calls/coaching-tab";
 import { CrmContextTab } from "@/components/calls/crm-context-tab";
 import { ManualActions } from "@/components/calls/manual-actions";
+import { CallBadges } from "@/components/calls/call-badges";
+import { DealRiskCard } from "@/components/calls/deal-risk-card";
+import { WhyThisMatters } from "@/components/calls/why-this-matters";
+import { MissedRevenueFlag } from "@/components/calls/missed-revenue-flag";
+import { DemoDataTag } from "@/components/layout/demo-data-tag";
+import { getCallBadges } from "@/lib/rules/badges";
+import { getDealRisk } from "@/lib/rules/deal-risk";
+import { detectMissedRevenueOpportunity } from "@/lib/rules/missed-revenue";
 import { formatCurrency, formatDate, formatDuration, titleCase } from "@/lib/utils";
 
 export default async function CallDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -17,15 +25,21 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
   if (!call) notFound();
 
   const a = call.analysis;
+  const badges = getCallBadges(call);
+  const dealRisk = getDealRisk(call);
+  const missedRevenue = detectMissedRevenueOpportunity(call);
 
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-border bg-surface p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-lg font-semibold">
-              {call.contact?.firstname} {call.contact?.lastname}
-            </h1>
+            <div className="mb-1 flex items-center gap-2">
+              <h1 className="text-lg font-semibold">
+                {call.contact?.firstname} {call.contact?.lastname}
+              </h1>
+              <DemoDataTag />
+            </div>
             <p className="text-sm text-muted">
               {call.sales_rep?.name ?? "Federico"} • {formatDate(call.started_at)} • {formatDuration(call.duration_seconds)} •{" "}
               {call.call_type}
@@ -59,7 +73,16 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
             <div className="font-medium">{titleCase(call.analysis_status)}</div>
           </div>
         </div>
+        {badges.length > 0 && (
+          <div className="mt-4 border-t border-border pt-4">
+            <CallBadges badges={badges} />
+          </div>
+        )}
       </div>
+
+      {a && <WhyThisMatters text={a.why_this_matters} />}
+      {missedRevenue.flagged && <MissedRevenueFlag result={missedRevenue} />}
+      {a && call.deal?.status === "open" && <DealRiskCard overallScore={a.overall_score} risk={dealRisk} />}
 
       <ManualActions callId={call.id} hasTranscript={Boolean(call.transcript?.transcript_text)} />
 

@@ -115,13 +115,21 @@ export interface CallAnalysis {
   call_outcome: string | null;
   close_probability: number | null;
   sentiment: string | null;
+  buying_intent: "low" | "medium" | "high" | null;
   customer_intent: string | null;
   coaching_summary: string | null;
   manager_summary: string | null;
+  why_this_matters: string | null;
   strengths: string[] | null;
   weaknesses: string[] | null;
   deal_risk_factors: string[] | null;
   follow_up_assessment: Record<string, unknown> | null;
+  follow_up_sms: string | null;
+  follow_up_email: string | null;
+  hubspot_synced_at: string | null;
+  hubspot_note_id: string | null;
+  hubspot_task_id: string | null;
+  hubspot_pushed_fields: string[] | null;
   raw_response: unknown;
   analyzed_at: string;
   model_used: string | null;
@@ -168,13 +176,18 @@ export interface MissedOpportunity {
   recommended_action: string | null;
 }
 
+export type ActionType = "send_material" | "call" | "email" | "text" | "schedule_meeting" | "internal_task" | "other";
+
 export interface NextAction {
   id: string;
   call_analysis_id: string;
+  action_type: ActionType | null;
   action: string | null;
   owner: string | null;
   due_date: string | null;
+  due_time: string | null;
   priority: Priority | null;
+  close_strategy: string | null;
   completed: boolean;
 }
 

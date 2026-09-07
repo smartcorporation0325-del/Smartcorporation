@@ -41,11 +41,21 @@ export const missedOpportunityResultSchema = z.object({
   recommendedAction: z.string(),
 });
 
+// "Smart Next Action" — operational and specific, never inventing a date/time the
+// client didn't provide (dueDate/dueTime are null when no timing was discussed).
 export const nextActionResultSchema = z.object({
-  action: z.string(),
-  owner: z.string(),
+  actionType: z.enum(["send_material", "call", "email", "text", "schedule_meeting", "internal_task", "other"]),
+  actionDescription: z.string(),
   dueDate: z.string().nullable().optional(),
+  dueTime: z.string().nullable().optional(),
+  owner: z.string(),
   priority: z.enum(["low", "medium", "high"]),
+  closeStrategy: z.string(),
+});
+
+export const followUpMessagesSchema = z.object({
+  sms: z.string(),
+  email: z.string(),
 });
 
 export const coachingRecommendationSchema = z.object({
@@ -69,6 +79,7 @@ export const callAnalysisResultSchema = z.object({
   overallScore: z.number().min(0).max(100),
   closeProbability: z.number().min(0).max(100),
   sentiment: z.enum(["positive", "neutral", "mixed", "negative"]),
+  buyingIntent: z.enum(["low", "medium", "high"]),
   customerIntent: z.string(),
   scorecard: z.array(scorecardSectionResultSchema),
   objections: z.array(objectionResultSchema),
@@ -85,6 +96,8 @@ export const callAnalysisResultSchema = z.object({
   }),
   dealRiskFactors: z.array(z.string()),
   managerSummary: z.string(),
+  whyThisMatters: z.string(),
+  followUpMessages: followUpMessagesSchema,
 });
 
 export type CallAnalysisResult = z.infer<typeof callAnalysisResultSchema>;

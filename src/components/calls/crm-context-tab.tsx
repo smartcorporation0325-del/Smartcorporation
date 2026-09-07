@@ -1,6 +1,8 @@
 import { Card } from "@/components/ui/card";
 import { formatCurrency, formatDate, titleCase } from "@/lib/utils";
 import { AssociateContact } from "@/components/calls/associate-contact";
+import { ApprovePushHubSpot } from "@/components/calls/approve-push-hubspot";
+import { buildPushPreview } from "@/lib/pipeline/push-to-hubspot";
 import type { CallWithRelations } from "@/types/db";
 
 export function CrmContextTab({ call }: { call: CallWithRelations }) {
@@ -34,6 +36,7 @@ export function CrmContextTab({ call }: { call: CallWithRelations }) {
         </p>
       </Card>
       <AssociateContact callId={call.id} hasContact={Boolean(call.contact?.hubspot_contact_id)} />
+      {call.analysis && <ApprovePushHubSpot callId={call.id} preview={buildPushPreview(call)} />}
     </div>
   );
 }

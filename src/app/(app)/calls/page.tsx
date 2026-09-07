@@ -1,9 +1,11 @@
 import Link from "next/link";
-import { getCalls, callNeedsAttention, type CallFilters } from "@/lib/data/calls";
+import { getCalls, type CallFilters } from "@/lib/data/calls";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
+import { CallBadges } from "@/components/calls/call-badges";
+import { getCallBadges } from "@/lib/rules/badges";
 import { formatDate, formatDuration, titleCase } from "@/lib/utils";
 
 const OUTCOMES = [
@@ -93,6 +95,7 @@ export default async function CallsPage({
               <th className="px-4 py-3 font-medium">Outcome</th>
               <th className="px-4 py-3 font-medium">Top Objection</th>
               <th className="px-4 py-3 font-medium">Follow-Up</th>
+              <th className="px-4 py-3 font-medium">Flags</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -110,11 +113,6 @@ export default async function CallsPage({
                     <Link href={`/calls/${c.id}`} className="font-medium hover:underline">
                       {c.contact?.firstname} {c.contact?.lastname}
                     </Link>
-                    {callNeedsAttention(c) && (
-                      <Badge tone="warn" className="ml-2">
-                        Attention
-                      </Badge>
-                    )}
                   </td>
                   <td className="px-4 py-3">{c.sales_rep?.name ?? "Federico"}</td>
                   <td className="px-4 py-3">{formatDuration(c.duration_seconds)}</td>
@@ -143,12 +141,15 @@ export default async function CallsPage({
                       {titleCase(followUp?.quality ?? "missing")}
                     </Badge>
                   </td>
+                  <td className="px-4 py-3">
+                    <CallBadges badges={getCallBadges(c)} />
+                  </td>
                 </tr>
               );
             })}
             {calls.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-4 py-8 text-center text-sm text-muted">
+                <td colSpan={12} className="px-4 py-8 text-center text-sm text-muted">
                   No calls match these filters.
                 </td>
               </tr>

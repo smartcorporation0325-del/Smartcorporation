@@ -86,9 +86,37 @@ than guessed from memory. Re-verify against `https://www.quo.com/docs` once you 
 a real `QUO_API_KEY` and can reach it, and adjust `services/quo/index.ts` if the
 actual endpoints differ.
 
+**Founder features** — a lightweight layer of executive-facing intelligence on top of
+Phase 1/2, all computed from structured analysis data already stored (no extra
+transcript passes):
+
+- **Founder Snapshot** on the dashboard: Biggest Sales Risk, Best Opportunity, Main
+  Objection, Coaching Focus.
+- **Hot Lead** detection (`lib/rules/hot-lead.ts`) and **Missed Revenue Opportunity**
+  detection (`lib/rules/missed-revenue.ts`) — simple, readable deterministic rules,
+  visible on the dashboard, calls list, and call detail.
+- **Smart Next Action** — Claude (or the demo heuristic) now returns an operational
+  `actionType`/`actionDescription`/`dueDate`/`dueTime`/`owner`/`priority`/
+  `closeStrategy`, never inventing a date the client didn't give.
+- **Suggested Follow-Up** — a ready-to-copy SMS and email per call (never sent
+  automatically).
+- **Call Quality Badges** (`lib/rules/badges.ts`) and **Deal Risk**
+  (`lib/rules/deal-risk.ts`, deliberately separate from call quality, rule-based, not
+  a black-box score).
+- **Approve & Push to HubSpot** — a preview of exactly what would be written (summary,
+  objection, buying intent, next action, score, follow-up task), with per-field
+  opt-out, idempotent on repeat clicks, only ever triggered by an explicit click.
+- **Weekly Founder Brief** — last 7 days, plus a short executive summary (Claude
+  phrases a handful of aggregate numbers when configured; otherwise a deterministic
+  template — never a second transcript pass).
+- **Open Opportunity Value** / **Value Requiring Attention**, and a subtle **Demo
+  Data** tag so seeded data is never mistaken for production data.
+- A flagship **"Founder Demo Call"** (Jordan Ellis — Skyline Rooftop Proposal) built to
+  show the full experience at once: a hot lead, a missed close, a price objection, a
+  high-risk deal, a specific smart next action, and a ready HubSpot push preview.
+
 ## What's next (Phase 3+)
 
 - Webhook-driven automated call ingestion at scale, alert engine notifications.
 - Coaching Center / Objection Intelligence enrichment from live sync data volume.
 - Scorecard admin editing (create/duplicate/version) beyond the read-only view.
-- HubSpot optional write-back (notes, tasks) — architected but disabled by default.

@@ -1,4 +1,5 @@
 import type {
+  ActionType,
   Alert,
   BuyingSignal,
   CallAnalysisFull,
@@ -14,6 +15,7 @@ import type {
   SalesRep,
 } from "@/types/db";
 import { ELITE_MARRY_ME_SCORECARD, ELITE_MARRY_ME_SCORECARD_NAME } from "./scorecard";
+import { buildFollowUpMessages, buildWhyThisMatters } from "@/lib/insights/generate";
 
 // ============================================================================
 // Demo dataset for Elite Marry Me — 15 fictional calls for Federico.
@@ -99,7 +101,7 @@ interface Scenario {
     insight: string;
     recommendation: string;
   }>;
-  nextActions: Array<{ action: string; owner: string; dueDate: string | null; priority: "low" | "medium" | "high" }>;
+  nextActions: Array<{ action: string; owner: string; dueDate: string | null; dueTime?: string | null; priority: "low" | "medium" | "high" }>;
 }
 
 const scenarios: Scenario[] = [
@@ -857,6 +859,103 @@ const scenarios: Scenario[] = [
     ],
     nextActions: [{ action: "Confirm outside-vendor photographer policy with Colin", owner: "Federico", dueDate: null, priority: "high" }],
   },
+  {
+    key: "c16",
+    contact: { firstname: "Jordan", lastname: "Ellis", email: "jordan.ellis@example.com", phone: "+15555550116" },
+    callType: "Proposal Planning",
+    daysAgo: 1,
+    durationSeconds: 1500,
+    direction: "inbound",
+    deal: { name: "Ellis — Skyline Rooftop Proposal", stage: "Proposal Sent", pipeline: "Event Bookings", amount: 7200, status: "open", closeDate: null, leadSource: "Instagram" },
+    outcome: "follow_up_needed",
+    sectionScores: [9, 17, 12, 12, 14, 6, 2],
+    closeProbability: 58,
+    sentiment: "positive",
+    customerIntent: "Highly interested — asked directly about availability and the deposit process for the rooftop location, but the call ended without confirming next steps.",
+    summary:
+      "Jordan is planning a rooftop proposal and came in highly engaged: clear date, guest count, and vision surfaced early. Federico handled a price objection reasonably, but when Jordan directly asked about availability and the deposit process — about as clear a buying signal as a rep can get — he answered informationally instead of asking for the reservation.",
+    managerSummary:
+      "Priority coaching example this week — a high-value hot lead with strong discovery, but a textbook missed close. The client asked to book; nobody asked back. Follow up today before this cools off.",
+    coachingSummary:
+      "This is the clearest missed-close pattern this month: the client asked directly about availability and the deposit — a green light to close — but Federico kept the conversation informational instead of asking for the reservation.",
+    strengths: [
+      "Thorough discovery uncovered the exact date, guest count, and vision within the first few minutes.",
+      "Explained the rooftop's exclusivity clearly, tying it directly to the client's stated priority of privacy.",
+    ],
+    weaknesses: [
+      "Answered the client's deposit question directly but never asked for the reservation.",
+      "Follow-up commitment was vague ('I'll be in touch soon') with no specific date or time.",
+    ],
+    dealRiskFactors: ["High-intent client with no confirmed next step.", "No follow-up call scheduled despite a direct deposit inquiry."],
+    followUp: { hasScheduledFollowUp: false, quality: "vague", notes: "Federico said 'I'll be in touch soon' with no specific date or time attached." },
+    transcript: [
+      { speaker: "Federico", text: "Jordan, thanks for calling in — tell me what you're picturing for the proposal." },
+      { speaker: "Client", text: "We want a rooftop with a skyline view, sunset timing, maybe 2 people there max besides us — just want it to feel private." },
+      { speaker: "Federico", text: "Got it — privacy and that skyline backdrop. Do you have a date in mind?" },
+      { speaker: "Client", text: "Yes, the 19th, it's her birthday." },
+      { speaker: "Federico", text: "Perfect, that's very doable. Based on the privacy priority, I'd point you to the Skyline Rooftop — we close the whole deck to the public for your window, no one else up there." },
+      { speaker: "Client", text: "That sounds incredible. What does that run?" },
+      { speaker: "Federico", text: "That package is $7,200." },
+      { speaker: "Client", text: "Okay, that's a bit more than I expected, honestly." },
+      { speaker: "Federico", text: "Totally fair — that includes the full private buyout of the deck, florals, and a 45-minute photographer window, which is what gets you the actual privacy you mentioned. Does that context help?" },
+      { speaker: "Client", text: "Yeah, that makes more sense actually." },
+      { speaker: "Client", text: "Is that rooftop actually available for the date we talked about?" },
+      { speaker: "Federico", text: "Let me check... yes, the 19th is open on that rooftop." },
+      { speaker: "Client", text: "Great. What would we need to do to put down a deposit?" },
+      { speaker: "Federico", text: "It's a simple deposit to hold the date, I can send over the details." },
+      { speaker: "Client", text: "Okay, sounds good." },
+      { speaker: "Federico", text: "Great, I'll be in touch soon with everything." },
+    ],
+    objections: [
+      {
+        type: "price",
+        text: "That's a bit more than I expected for the rooftop package.",
+        evidence: "Client: 'Okay, that's a bit more than I expected, honestly.'",
+        severity: "medium",
+        handled: true,
+        handlingQuality: 6,
+        recommendedResponse:
+          "(Handled adequately) Tied the price to the exact privacy benefit the client asked for — could go further by immediately following the price justification with a direct ask for commitment.",
+      },
+    ],
+    buyingSignals: [
+      { type: "direct availability request", evidence: "Client: 'Is that rooftop actually available for the date we talked about?'", strength: "high" },
+      { type: "deposit inquiry", evidence: "Client: 'What would we need to do to put down a deposit?'", strength: "high" },
+    ],
+    missedOpportunities: [
+      {
+        category: "closing",
+        description:
+          "The client explicitly asked about availability and the deposit process for the preferred rooftop — but no direct or conditional close was attempted. Federico answered both questions informationally instead of asking Jordan to secure the reservation.",
+        recommendedAction:
+          "When a client asks 'what would we need to do to put down a deposit,' that is the close moment — answer briefly, then directly ask: 'Would you like to go ahead and secure the 19th right now?'",
+      },
+    ],
+    coachingInsights: [
+      {
+        category: "Closing",
+        kind: "weakness",
+        insight: "Client asked directly about availability and deposit — the clearest possible buying signal — and Federico responded informationally instead of closing.",
+        recommendation: "Practice converting a deposit question directly into a closing question: answer, then immediately ask for the reservation.",
+      },
+      {
+        category: "Objection Handling",
+        kind: "strength",
+        insight: "Reconnected the price objection to the client's own stated priority (privacy) rather than just defending the number.",
+        recommendation: "Keep this pattern, then chain it directly into a close instead of stopping at reassurance.",
+      },
+    ],
+    nextActions: [
+      {
+        action:
+          "Send the Skyline Rooftop video today and call Jordan tomorrow at 5 PM. If the location matches expectations, ask directly whether they're ready to secure the 19th with a deposit.",
+        owner: "Federico",
+        dueDate: daysAgo(0),
+        dueTime: "5:00 PM",
+        priority: "high",
+      },
+    ],
+  },
 ];
 
 function buildContact(s: Scenario): Contact {
@@ -947,12 +1046,21 @@ function buildAnalysis(s: Scenario): CallAnalysisFull {
   const nextActions: NextAction[] = s.nextActions.map((n, i) => ({
     id: `demo-action-${s.key}-${i}`,
     call_analysis_id: `demo-analysis-${s.key}`,
+    action_type: inferActionType(n.action),
     action: n.action,
     owner: n.owner,
     due_date: n.dueDate,
+    due_time: n.dueTime ?? null,
     priority: n.priority,
+    close_strategy: inferCloseStrategy(s),
     completed: s.outcome === "closed_won" || s.outcome === "closed_lost",
   }));
+
+  const buyingIntent: "low" | "medium" | "high" = s.buyingSignals.some((b) => b.strength === "high")
+    ? "high"
+    : s.buyingSignals.length > 0
+      ? "medium"
+      : "low";
 
   const coachingInsights: CoachingInsight[] = s.coachingInsights.map((c, i) => ({
     id: `demo-coach-${s.key}-${i}`,
@@ -972,13 +1080,35 @@ function buildAnalysis(s: Scenario): CallAnalysisFull {
     call_outcome: s.outcome,
     close_probability: s.closeProbability,
     sentiment: s.sentiment,
+    buying_intent: buyingIntent,
     customer_intent: s.customerIntent,
     coaching_summary: s.coachingSummary,
     manager_summary: s.managerSummary,
+    why_this_matters: buildWhyThisMatters({
+      buyingIntent,
+      dealOpen: s.deal.status === "open",
+      hasClearNextStep: s.followUp.hasScheduledFollowUp && s.followUp.quality === "clear",
+      dealAmount: s.deal.amount,
+      missedClose: s.missedOpportunities.some((m) => m.category === "closing"),
+    }),
     strengths: s.strengths,
     weaknesses: s.weaknesses,
     deal_risk_factors: s.dealRiskFactors,
     follow_up_assessment: s.followUp,
+    follow_up_sms: buildFollowUpMessages({
+      contactFirstName: s.contact.firstname,
+      repName: "Federico",
+      nextActionSummary: s.nextActions[0]?.action ?? "I'll follow up shortly with next steps.",
+    }).sms,
+    follow_up_email: buildFollowUpMessages({
+      contactFirstName: s.contact.firstname,
+      repName: "Federico",
+      nextActionSummary: s.nextActions[0]?.action ?? "I'll follow up shortly with next steps.",
+    }).email,
+    hubspot_synced_at: null,
+    hubspot_note_id: null,
+    hubspot_task_id: null,
+    hubspot_pushed_fields: null,
     raw_response: null,
     analyzed_at: daysAgo(Math.max(s.daysAgo - 0.02, 0)),
     model_used: "claude-sonnet-5 (seed data)",
@@ -990,6 +1120,27 @@ function buildAnalysis(s: Scenario): CallAnalysisFull {
     next_actions: nextActions,
     coaching_insights: coachingInsights,
   };
+}
+
+function inferActionType(actionText: string): ActionType {
+  const t = actionText.toLowerCase();
+  if (t.includes("video") || t.includes("photo") || t.includes("proposal") || t.includes("recap") || t.includes("send") || t.includes("guide")) {
+    return "send_material";
+  }
+  if (t.includes("call")) return "call";
+  if (t.includes("email")) return "email";
+  if (t.includes("text") || t.includes("sms")) return "text";
+  if (t.includes("schedule") || t.includes("meeting") || t.includes("joint")) return "schedule_meeting";
+  return "other";
+}
+
+function inferCloseStrategy(s: Scenario): string {
+  if (s.outcome === "closed_won") return "Deal already closed — no further close strategy needed.";
+  if (s.outcome === "closed_lost") return "Deal already lost — focus shifts to coaching, not this deal.";
+  const hasHighSignal = s.buyingSignals.some((b) => b.strength === "high");
+  if (hasHighSignal) return "Lead with a direct ask for commitment once the promised material is reviewed.";
+  if (s.objections.length) return `Resolve the outstanding ${s.objections[0].type} concern, then propose a specific next step.`;
+  return "Use the next touchpoint to narrow toward a specific recommendation and a direct next step.";
 }
 
 function sectionExplanation(sectionName: string, s: Scenario): string {
