@@ -54,7 +54,9 @@ function buildQuery(params: Record<string, QueryValue>): string {
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined) continue;
     if (Array.isArray(value)) {
-      for (const v of value) search.append(`${key}[]`, v);
+      // Confirmed against Quo's real API (not just docs): array params are the
+      // repeated bare key ("participants=a&participants=b"), NOT "participants[]=".
+      for (const v of value) search.append(key, v);
     } else {
       search.append(key, String(value));
     }
