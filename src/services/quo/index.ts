@@ -142,9 +142,14 @@ class LiveQuoService implements QuoService {
     const res = await fetch(`${QUO_API_BASE}${path}`, {
       headers: { Authorization: `${process.env.QUO_API_KEY}`, "Content-Type": "application/json" },
     });
-    if (res.status === 404) return null;
+    if (res.status === 404) {
+      console.error(`[quo-debug] 404 on ${path}`);
+      return null;
+    }
     if (!res.ok) throw new Error(`Quo API error ${res.status}: ${await res.text()}`);
-    return res.json() as Promise<T>;
+    const json = (await res.json()) as T;
+    console.error(`[quo-debug] ${path} ->`, JSON.stringify(json).slice(0, 1500));
+    return json;
   }
 
   async listInboxes(userId?: string): Promise<QuoInbox[]> {
