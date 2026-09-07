@@ -142,14 +142,9 @@ class LiveQuoService implements QuoService {
     const res = await fetch(`${QUO_API_BASE}${path}`, {
       headers: { Authorization: `${process.env.QUO_API_KEY}`, "Content-Type": "application/json" },
     });
-    if (res.status === 404) {
-      console.error(`[quo-debug] 404 on ${path}`);
-      return null;
-    }
+    if (res.status === 404) return null;
     if (!res.ok) throw new Error(`Quo API error ${res.status}: ${await res.text()}`);
-    const json = (await res.json()) as T;
-    console.error(`[quo-debug] ${path} ->`, JSON.stringify(json).slice(0, 1500));
-    return json;
+    return res.json() as Promise<T>;
   }
 
   async listInboxes(userId?: string): Promise<QuoInbox[]> {
@@ -178,18 +173,25 @@ class LiveQuoService implements QuoService {
   }
 
   private async fetchTranscript(callId: string): Promise<QuoTranscript | null> {
-    const raw = await this.requestOptional<RawTranscript>(`/v1/call-transcripts/${callId}`);
+    // Every Quo response body wraps its payload in a top-level "data" object —
+    // confirmed against real workspace responses (call-transcripts, call-summaries,
+    // phone-numbers, users, calls all share this envelope).
+    const envelope = await this.requestOptional<{ data: RawTranscript }>(`/v1/call-transcripts/${callId}`);
+    const raw = envelope?.data;
     if (!raw) return null;
 
     let aiSummary: string | null = null;
     try {
-      const summary = await this.requestOptional<RawCallSummary>(`/v1/call-summaries/${callId}`);
-      if (summary?.summary?.length) aiSummary = summary.summary.join(" ");
+      const summaryEnvelope = await this.requestOptional<{ data: RawCallSummary }>(`/v1/call-summaries/${callId}`);
+      if (summaryEnvelope?.data.summary?.length) aiSummary = summaryEnvelope.data.summary.join(" ");
     } catch {
       // Call summaries are a nice-to-have; never fail transcript retrieval because of them.
     }
 
-    const status: QuoTranscript["status"] = raw.status === "completed" || raw.status === "ready" ? "ready" : raw.status === "failed" ? "failed" : "pending";
+    // The transcript endpoint doesn't always echo a "status" field once dialogue is
+    // present — a non-empty dialogue array is itself proof the transcript is ready.
+    const status: QuoTranscript["status"] =
+      raw.status === "failed" ? "failed" : raw.dialogue?.length || raw.status === "completed" || raw.status === "ready" ? "ready" : "pending";
     return {
       callId,
       status,
