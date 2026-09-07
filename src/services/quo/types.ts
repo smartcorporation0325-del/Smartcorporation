@@ -1,11 +1,12 @@
 // Quo (formerly OpenPhone) adapter types.
 //
 // Grounded against Quo's actual API shape (confirmed via Quo's own MCP tool contracts
-// and public docs snippets — direct doc fetches to quo.com are blocked by this
-// environment's egress proxy, so this is the best-verified shape available):
+// and public docs snippets — direct doc fetches to quo.com/openphone.com are blocked
+// by this environment's egress proxy, so this is the best-verified shape available):
 //
-// - Base URL https://api.quo.com, API-key auth via `Authorization` header, JSON over
-//   HTTPS, cursor-based pagination (`pageToken`), rate limited ~10 req/s.
+// - Base URL https://api.openphone.com (override via QUO_API_BASE_URL), API-key auth
+//   via `Authorization` header (no "Bearer" prefix), JSON over HTTPS, cursor-based
+//   pagination (`pageToken`), rate limited ~10 req/s.
 // - Calls are scoped by INBOX (a workspace phone number / "PN..." id), not fetched by
 //   a global call-list endpoint. You list calls/transcripts for one inbox, optionally
 //   filtered by participant phone number, user id ("US..."), and a created-at window.
