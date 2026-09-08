@@ -71,10 +71,15 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ received: true, callId: result.callId, created: result.created });
 }
 
+// Quo's docs show the payload's own `type` field as "callTranscript", but the
+// workspace UI names the subscribable event "call.transcript.completed" — accept
+// either since we can't confirm which one the live payload actually sends.
+const CALL_TRANSCRIPT_EVENT_TYPES = new Set(["callTranscript", "call.transcript.completed"]);
+
 function extractCallId(payload: unknown): string | null {
   if (typeof payload !== "object" || payload === null) return null;
   const p = payload as Record<string, unknown>;
-  if (p.type !== "callTranscript") return null;
+  if (typeof p.type !== "string" || !CALL_TRANSCRIPT_EVENT_TYPES.has(p.type)) return null;
   const data = p.data as Record<string, unknown> | undefined;
   const object = data?.object as Record<string, unknown> | undefined;
   return typeof object?.callId === "string" ? object.callId : null;
