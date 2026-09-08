@@ -270,6 +270,8 @@ class LiveQuoService implements QuoService {
     const MAX_CONVERSATION_PAGES = 20;
 
     pageLoop: for (let page = 0; page < MAX_CONVERSATION_PAGES; page++) {
+      if (params.deadline && Date.now() > params.deadline) break;
+
       const conversations = await this.request<{ data: RawConversation[]; nextPageToken: string | null }>(
         `/v1/conversations${buildQuery({
           phoneNumbers: [params.inboxPhoneNumber],
@@ -281,6 +283,7 @@ class LiveQuoService implements QuoService {
       );
 
       for (const convo of conversations.data) {
+        if (params.deadline && Date.now() > params.deadline) break pageLoop;
         if (params.createdAfter && convo.lastActivityAt && convo.lastActivityAt < params.createdAfter) {
           // Sorted most-recent-first: once we're past the window, every remaining
           // conversation (this page and any later page) is older still.

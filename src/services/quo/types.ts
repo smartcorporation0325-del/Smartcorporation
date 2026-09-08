@@ -67,6 +67,11 @@ export interface QuoListCallsParams {
   createdBefore?: string;
   pageToken?: string;
   maxResults?: number;
+  /** Absolute Date.now()-style deadline (ms). A wide window can involve many
+   *  sequential Quo API calls; the conversation-discovery path stops and returns
+   *  whatever it's gathered so far once this passes, rather than risk a hard
+   *  serverless timeout that returns nothing at all. */
+  deadline?: number;
 }
 
 export interface QuoPage<T> {

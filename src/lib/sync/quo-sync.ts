@@ -159,6 +159,14 @@ export async function syncRecentQuoCalls(
   let inspected = 0;
   let ingested = 0;
 
+  // Vercel kills this whole request at 300s. A wide window (e.g. 14 days) can involve
+  // dozens of sequential Quo API calls just to ingest — confirmed in production, that
+  // alone ate the full 300s and left zero budget for analysis, timing out with nothing
+  // recorded at all. Split the budget explicitly: ingestion gets up to 150s, leaving
+  // the rest (capped at 120s) for analysis, with margin before the hard 300s cutoff.
+  const syncStartedAt = Date.now();
+  const ingestionDeadline = syncStartedAt + 150_000;
+
   try {
     const inboxes = await quo.listInboxes();
     const users = await quo.listUsers();
@@ -175,9 +183,15 @@ export async function syncRecentQuoCalls(
     // Ingestion only (no Claude calls here) — a wide date range can cover dozens of
     // calls, and running analysis inline for every one of them blew past Vercel's
     // request timeout. See ingestQuoCall's skipAnalysis doc for the full story.
-    for (const inbox of inboxes) {
-      const page = await quo.listCallsWithTranscripts({ inboxPhoneNumber: inbox.phoneNumber, createdAfter, createdBefore });
+    inboxLoop: for (const inbox of inboxes) {
+      const page = await quo.listCallsWithTranscripts({
+        inboxPhoneNumber: inbox.phoneNumber,
+        createdAfter,
+        createdBefore,
+        deadline: ingestionDeadline,
+      });
       for (const { call, transcript } of page.items) {
+        if (Date.now() > ingestionDeadline) break inboxLoop;
         inspected++;
         // One bad call (e.g. an unexpected HubSpot response while matching) must not
         // abort the rest of a multi-call batch — confirmed in production: a single
@@ -194,9 +208,10 @@ export async function syncRecentQuoCalls(
 
     void users; // reserved for future user-level filtering/reporting
 
-    // Now spend whatever's left of the request budget analyzing what just got
-    // ingested (plus anything left pending from an earlier sync).
-    const { analyzed, remaining, errors: analysisErrors } = await analyzePendingCalls();
+    // Now spend whatever's left of the request budget (capped at 120s) analyzing what
+    // just got ingested, plus anything left pending from an earlier sync.
+    const analysisBudgetMs = Math.max(0, Math.min(120_000, 260_000 - (Date.now() - syncStartedAt)));
+    const { analyzed, remaining, errors: analysisErrors } = await analyzePendingCalls(analysisBudgetMs);
     errors.push(...analysisErrors);
 
     await writeSyncLog({
