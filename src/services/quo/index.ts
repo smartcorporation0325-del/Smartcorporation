@@ -307,9 +307,16 @@ class LiveQuoService implements QuoService {
             maxResults: params.maxResults ?? 20,
           })}`
         );
-        console.error(`[quo-debug] convo ${convo.id} participant=${participant} calls=${callsPage.data.length}`);
+        console.error(
+          `[quo-debug] convo ${convo.id} participant=${participant} calls=${callsPage.data.length} raw=${JSON.stringify(
+            callsPage.data.map((r) => ({ id: r.id, duration: r.duration, status: r.status, direction: r.direction, createdAt: r.createdAt }))
+          )}`
+        );
         for (const raw of callsPage.data) {
-          if (seenCallIds.has(raw.id)) continue;
+          if (seenCallIds.has(raw.id)) {
+            console.error(`[quo-debug] call ${raw.id} already seen this run (from another conversation) — skipped`);
+            continue;
+          }
           seenCallIds.add(raw.id);
           const call = this.toCallDetail(params.inboxPhoneNumber, raw);
           const transcript = params.skipTranscriptForCallIds?.has(call.id) ? null : await this.fetchTranscript(call.id);

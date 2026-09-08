@@ -229,6 +229,7 @@ export async function syncRecentQuoCalls(
         // unhandled error here silently killed an entire 30-call sync.
         try {
           const result = await ingestQuoCall(call, transcript, repIdForQuoUser, { skipAnalysis: true });
+          console.error(`[quo-debug] ingest call ${call.id} duration=${call.durationSeconds}s -> created=${result.created} callId=${result.callId} error=${result.error ?? "none"}`);
           if (result.error) errors.push(result.error);
           else if (result.created) ingested++;
         } catch (err) {
