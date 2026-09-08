@@ -72,6 +72,13 @@ export interface QuoListCallsParams {
    *  whatever it's gathered so far once this passes, rather than risk a hard
    *  serverless timeout that returns nothing at all. */
   deadline?: number;
+  /** quo_call_id values we've already fully stored (transcript_status = 'ready').
+   *  Every re-sync of the same window otherwise re-fetches the transcript + summary
+   *  for calls we already have — confirmed as the dominant cost on a repeat sync
+   *  (~2 HTTP calls per already-known call, every single click). Calls in this set
+   *  get `transcript: null` without a fetch; the caller's idempotent ingest already
+   *  no-ops on those, so nothing is lost by skipping. */
+  skipTranscriptForCallIds?: Set<string>;
 }
 
 export interface QuoPage<T> {

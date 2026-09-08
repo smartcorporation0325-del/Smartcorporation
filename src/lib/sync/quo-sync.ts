@@ -180,6 +180,16 @@ export async function syncRecentQuoCalls(
 
     const { createdAfter, createdBefore } = window;
 
+    // A repeat sync of the same window otherwise re-fetches the transcript + summary
+    // for every call it's already stored, every single click — confirmed as the
+    // dominant time cost on a re-sync (2 HTTP calls per already-known call). Skip
+    // those; ingestQuoCall's idempotent check already no-ops on them regardless.
+    const knownReadyCallIds = new Set<string>();
+    if (admin) {
+      const { data: knownReady } = await admin.from("calls").select("quo_call_id").eq("transcript_status", "ready").not("quo_call_id", "is", null);
+      for (const row of knownReady ?? []) if (row.quo_call_id) knownReadyCallIds.add(row.quo_call_id);
+    }
+
     // Ingestion only (no Claude calls here) — a wide date range can cover dozens of
     // calls, and running analysis inline for every one of them blew past Vercel's
     // request timeout. See ingestQuoCall's skipAnalysis doc for the full story.
@@ -189,6 +199,7 @@ export async function syncRecentQuoCalls(
         createdAfter,
         createdBefore,
         deadline: ingestionDeadline,
+        skipTranscriptForCallIds: knownReadyCallIds,
       });
       for (const { call, transcript } of page.items) {
         if (Date.now() > ingestionDeadline) break inboxLoop;

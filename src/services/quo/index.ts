@@ -249,7 +249,7 @@ class LiveQuoService implements QuoService {
       const items = await Promise.all(
         page.data.map(async (raw) => {
           const call = this.toCallDetail(params.inboxPhoneNumber, raw);
-          const transcript = await this.fetchTranscript(call.id);
+          const transcript = params.skipTranscriptForCallIds?.has(call.id) ? null : await this.fetchTranscript(call.id);
           return { call, transcript };
         })
       );
@@ -306,7 +306,7 @@ class LiveQuoService implements QuoService {
           if (seenCallIds.has(raw.id)) continue;
           seenCallIds.add(raw.id);
           const call = this.toCallDetail(params.inboxPhoneNumber, raw);
-          const transcript = await this.fetchTranscript(call.id);
+          const transcript = params.skipTranscriptForCallIds?.has(call.id) ? null : await this.fetchTranscript(call.id);
           items.push({ call, transcript });
         }
       }
