@@ -82,12 +82,20 @@ export async function ingestQuoCall(
   return { callId: newCall.id, created: true, transcriptReady: false };
 }
 
+export interface SyncWindow {
+  createdAfter: string; // ISO 8601 UTC
+  createdBefore?: string; // ISO 8601 UTC, omitted means "up to now"
+}
+
 /**
- * Manual "Sync now" entry point (Settings > Integrations). Lists recent calls across
- * every known inbox and ingests any not already known to us. Requires QUO_API_KEY;
- * without it, returns a clear no-op result rather than silently doing nothing.
+ * Manual "Sync now" entry point (Settings > Integrations). Lists calls across every
+ * known inbox within the given window and ingests any not already known to us.
+ * Requires QUO_API_KEY; without it, returns a clear no-op result rather than
+ * silently doing nothing. Defaults to the last 24 hours when no window is given.
  */
-export async function syncRecentQuoCalls(sinceHours = 24): Promise<{ inspected: number; ingested: number; errors: string[] }> {
+export async function syncRecentQuoCalls(
+  window: SyncWindow = { createdAfter: new Date(Date.now() - 24 * 3600 * 1000).toISOString() }
+): Promise<{ inspected: number; ingested: number; errors: string[] }> {
   if (!isQuoConfigured()) {
     const message = "QUO_API_KEY is not configured — nothing to sync. Demo data is already loaded.";
     await writeSyncLog({ provider: "quo", action: "sync_now", status: "error", errorMessage: message });
@@ -110,10 +118,10 @@ export async function syncRecentQuoCalls(sinceHours = 24): Promise<{ inspected: 
       return data?.id ?? null;
     };
 
-    const createdAfter = new Date(Date.now() - sinceHours * 3600 * 1000).toISOString();
+    const { createdAfter, createdBefore } = window;
 
     for (const inbox of inboxes) {
-      const page = await quo.listCallsWithTranscripts({ inboxPhoneNumber: inbox.phoneNumber, createdAfter });
+      const page = await quo.listCallsWithTranscripts({ inboxPhoneNumber: inbox.phoneNumber, createdAfter, createdBefore });
       for (const { call, transcript } of page.items) {
         inspected++;
         const result = await ingestQuoCall(call, transcript, repIdForQuoUser);

@@ -2,11 +2,29 @@
 
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
-import { testQuoConnectionAction, testHubSpotConnectionAction, syncQuoNowAction } from "@/app/(app)/settings/integrations/actions";
+import { Select, Input } from "@/components/ui/input";
+import {
+  testQuoConnectionAction,
+  testHubSpotConnectionAction,
+  syncQuoNowAction,
+  type SyncRangePreset,
+} from "@/app/(app)/settings/integrations/actions";
+
+const RANGE_OPTIONS: { value: SyncRangePreset; label: string }[] = [
+  { value: "24h", label: "Last 24 hours" },
+  { value: "3d", label: "Last 3 days" },
+  { value: "7d", label: "Last 7 days" },
+  { value: "14d", label: "Last 14 days" },
+  { value: "this_month", label: "This month" },
+  { value: "last_month", label: "Last month" },
+  { value: "custom", label: "Specific date…" },
+];
 
 export function IntegrationActions({ provider }: { provider: "quo" | "hubspot" | "anthropic" | "supabase" }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const [range, setRange] = useState<SyncRangePreset>("24h");
+  const [customDate, setCustomDate] = useState("");
 
   if (provider === "anthropic" || provider === "supabase") return null;
 
@@ -21,7 +39,7 @@ export function IntegrationActions({ provider }: { provider: "quo" | "hubspot" |
   function syncNow() {
     setMessage(null);
     startTransition(async () => {
-      const result = await syncQuoNowAction();
+      const result = await syncQuoNowAction(range, range === "custom" ? customDate : undefined);
       setMessage(
         result.errors.length
           ? `Sync failed: ${result.errors[0]}`
@@ -32,14 +50,32 @@ export function IntegrationActions({ provider }: { provider: "quo" | "hubspot" |
 
   return (
     <div className="space-y-2">
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="outline" onClick={testConnection} disabled={pending}>
           {pending ? "Checking…" : "Test connection"}
         </Button>
         {provider === "quo" && (
-          <Button size="sm" variant="secondary" onClick={syncNow} disabled={pending}>
-            {pending ? "Syncing…" : "Sync now"}
-          </Button>
+          <>
+            <Select className="h-9 w-40" value={range} onChange={(e) => setRange(e.target.value as SyncRangePreset)} disabled={pending}>
+              {RANGE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+            {range === "custom" && (
+              <Input
+                type="date"
+                className="h-9 w-40"
+                value={customDate}
+                onChange={(e) => setCustomDate(e.target.value)}
+                disabled={pending}
+              />
+            )}
+            <Button size="sm" variant="secondary" onClick={syncNow} disabled={pending || (range === "custom" && !customDate)}>
+              {pending ? "Syncing…" : "Sync now"}
+            </Button>
+          </>
         )}
       </div>
       {message && <p className="text-xs text-muted">{message}</p>}
