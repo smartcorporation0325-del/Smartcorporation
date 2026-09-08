@@ -71,13 +71,20 @@ export async function runCallAnalysis(
 
   const message = await client.messages.create({
     model: MODEL,
-    max_tokens: 8000,
+    max_tokens: 16000,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: userPrompt }],
   });
 
   const textBlock = message.content.find((b) => b.type === "text");
   const rawText = textBlock && "text" in textBlock ? textBlock.text : "";
+
+  if (message.stop_reason === "max_tokens") {
+    throw new AnalysisValidationError(
+      "Claude's response was cut off (hit the max_tokens limit) before finishing the analysis JSON.",
+      rawText
+    );
+  }
 
   let parsedJson: unknown;
   try {
