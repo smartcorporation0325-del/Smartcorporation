@@ -65,12 +65,20 @@ class LiveHubSpotService implements HubSpotService {
   }
 
   async searchContactByPhone(phone: string): Promise<HubSpotContact | null> {
-    return this.searchContact("phone", phone);
+    // HubSpot's `phone` property has no fixed storage format (dashes, parentheses,
+    // with/without country code all occur in real portals), so an exact EQ match on
+    // our E.164-normalized value can silently miss a contact that genuinely exists —
+    // confirmed against a real portal where the contact was findable via HubSpot's own
+    // search but not via EQ. CONTAINS_TOKEN on the bare national digits is
+    // format-tolerant, matching the way HubSpot's own UI search behaves.
+    const digits = phone.replace(/\D/g, "");
+    const nationalDigits = digits.length > 10 ? digits.slice(-10) : digits;
+    return this.searchContact("phone", nationalDigits, "CONTAINS_TOKEN");
   }
 
-  private async searchContact(property: string, value: string): Promise<HubSpotContact | null> {
+  private async searchContact(property: string, value: string, operator: string = "EQ"): Promise<HubSpotContact | null> {
     const body = {
-      filterGroups: [{ filters: [{ propertyName: property, operator: "EQ", value }] }],
+      filterGroups: [{ filters: [{ propertyName: property, operator, value }] }],
       properties: CONTACT_PROPERTIES,
       limit: 1,
     };
