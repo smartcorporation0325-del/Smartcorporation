@@ -6,6 +6,26 @@ import { rerunAnalysisForCall } from "@/lib/pipeline/analyze";
 import { writeSyncLog } from "@/lib/data/sync-logs";
 import type { QuoCallDetail, QuoTranscript } from "@/services/quo/types";
 
+// Our calls.status check constraint only allows 'completed' | 'missed' | 'voicemail' |
+// 'in_progress' (underscore). Quo's own statuses include a couple of near-misses
+// ("in-progress" with a hyphen, "no-answer", "abandoned") that look like exact matches
+// but aren't — confirmed in production: "in-progress" alone violated the constraint
+// and silently aborted an otherwise-successful sync.
+function mapQuoCallStatus(status: QuoCallDetail["status"]): "completed" | "missed" | "voicemail" | "in_progress" {
+  switch (status) {
+    case "missed":
+    case "no-answer":
+    case "abandoned":
+      return "missed";
+    case "voicemail":
+      return "voicemail";
+    case "in-progress":
+      return "in_progress";
+    default:
+      return "completed";
+  }
+}
+
 export interface IngestResult {
   callId: string | null;
   created: boolean;
@@ -72,7 +92,7 @@ export async function ingestQuoCall(
       started_at: call.createdAt,
       duration_seconds: call.durationSeconds,
       direction: call.direction,
-      status: call.status === "no-answer" || call.status === "abandoned" ? "missed" : (call.status as "completed" | "missed" | "voicemail" | "in_progress"),
+      status: mapQuoCallStatus(call.status),
       recording_url_or_reference: call.recordingUrl,
       transcript_status: transcript?.status === "ready" ? "ready" : "pending",
       analysis_status: "none",
