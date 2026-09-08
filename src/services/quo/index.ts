@@ -144,6 +144,9 @@ class LiveQuoService implements QuoService {
     const res = await fetch(`${QUO_API_BASE}${path}`, {
       headers: { Authorization: `${process.env.QUO_API_KEY}`, "Content-Type": "application/json" },
     });
+    if (path.includes("/call-transcripts/")) {
+      console.error(`[quo-debug] ${path} -> HTTP ${res.status}`);
+    }
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`Quo API error ${res.status}: ${await res.text()}`);
     return res.json() as Promise<T>;
@@ -304,6 +307,7 @@ class LiveQuoService implements QuoService {
           seenCallIds.add(raw.id);
           const call = this.toCallDetail(params.inboxPhoneNumber, raw);
           const transcript = await this.fetchTranscript(call.id);
+          console.error(`[quo-debug] call ${call.id} duration=${raw.duration}s createdAt=${raw.createdAt} -> transcript=${transcript ? transcript.status + " (" + transcript.segments.length + " segments)" : "null"}`);
           items.push({ call, transcript });
         }
       }
