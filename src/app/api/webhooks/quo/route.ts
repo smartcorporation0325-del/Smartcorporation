@@ -4,21 +4,20 @@ import { ingestQuoCall } from "@/lib/sync/quo-sync";
 import { writeSyncLog } from "@/lib/data/sync-logs";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
-import type { QuoCallDetail, QuoTranscript } from "@/services/quo/types";
 
 // Quo (formerly OpenPhone) webhook receiver (Section 20). Verifies the signature,
 // handles duplicate deliveries idempotently (see ingestQuoCall's quo_call_id check),
 // and marks transcript_status = 'pending' when the transcript isn't ready yet rather
 // than failing the whole ingest.
 //
-// Payload shape note: this environment cannot reach quo.com's docs to confirm the
-// exact webhook body (see services/quo/index.ts header). We accept a reasonably
-// shaped payload (a `call` object plus an optional `transcript` object) and log the
-// raw payload_reference either way, so a mismatch is diagnosable from sync logs
-// rather than a silent failure — adjust `parsePayload` once verified.
+// Real event shape confirmed via docs: { type: "callTranscript", data: { object: {
+// callId, dialogue, duration, status } } } — it does NOT include the call's inbox,
+// participant, direction, or rep, so on receipt we fetch the full call record via
+// GET /v1/calls/{callId} (QuoService.getCallWithTranscript) rather than trusting the
+// webhook body for anything beyond "this callId's transcript is ready".
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
-  const signature = req.headers.get("x-quo-signature");
+  const signature = req.headers.get("openphone-signature");
 
   const quo = getQuoService();
   if (!quo.verifyWebhookSignature(rawBody, signature)) {
@@ -33,8 +32,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
   }
 
-  const parsed = parsePayload(payload);
-  if (!parsed) {
+  const callId = extractCallId(payload);
+  if (!callId) {
     await writeSyncLog({ provider: "quo", action: "webhook", status: "error", errorMessage: "unrecognized payload shape", payloadReference: rawBody.slice(0, 500) });
     return NextResponse.json({ error: "unrecognized payload shape" }, { status: 400 });
   }
@@ -45,6 +44,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true, note: "demo mode: no persistence configured" });
   }
 
+  const fetched = await quo.getCallWithTranscript(callId);
+  if (!fetched) {
+    await writeSyncLog({ provider: "quo", action: "webhook", status: "error", errorMessage: `call ${callId} not found`, payloadReference: callId });
+    return NextResponse.json({ error: "call not found" }, { status: 404 });
+  }
+
   const admin = getSupabaseAdminClient();
   const repIdForQuoUser = async (quoUserId: string | null): Promise<string | null> => {
     if (!quoUserId || !admin) return null;
@@ -52,13 +57,13 @@ export async function POST(req: NextRequest) {
     return data?.id ?? null;
   };
 
-  const result = await ingestQuoCall(parsed.call, parsed.transcript, repIdForQuoUser);
+  const result = await ingestQuoCall(fetched.call, fetched.transcript, repIdForQuoUser);
 
   await writeSyncLog({
     provider: "quo",
-    action: `webhook:${parsed.eventType}`,
+    action: "webhook:callTranscript",
     status: result.error ? "error" : "success",
-    payloadReference: parsed.call.id,
+    payloadReference: callId,
     errorMessage: result.error ?? null,
   });
 
@@ -66,34 +71,11 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ received: true, callId: result.callId, created: result.created });
 }
 
-function parsePayload(payload: unknown): { eventType: string; call: QuoCallDetail; transcript: QuoTranscript | null } | null {
+function extractCallId(payload: unknown): string | null {
   if (typeof payload !== "object" || payload === null) return null;
   const p = payload as Record<string, unknown>;
-  const call = p.call as Record<string, unknown> | undefined;
-  if (!call || typeof call.id !== "string") return null;
-
-  const callDetail: QuoCallDetail = {
-    id: call.id,
-    conversationId: (call.conversationId as string) ?? null,
-    inboxPhoneNumber: (call.inboxPhoneNumber as string) ?? "",
-    participantPhoneNumber: (call.participantPhoneNumber as string) ?? null,
-    userId: (call.userId as string) ?? null,
-    direction: (call.direction as "inbound" | "outbound") ?? "inbound",
-    status: (call.status as QuoCallDetail["status"]) ?? "completed",
-    createdAt: (call.createdAt as string) ?? new Date().toISOString(),
-    durationSeconds: (call.durationSeconds as number) ?? null,
-    recordingUrl: (call.recordingUrl as string) ?? null,
-  };
-
-  const rawTranscript = p.transcript as Record<string, unknown> | undefined;
-  const transcript: QuoTranscript | null = rawTranscript
-    ? {
-        callId: call.id,
-        status: (rawTranscript.status as QuoTranscript["status"]) ?? "pending",
-        segments: Array.isArray(rawTranscript.segments) ? (rawTranscript.segments as QuoTranscript["segments"]) : [],
-        aiSummary: (rawTranscript.aiSummary as string) ?? null,
-      }
-    : null;
-
-  return { eventType: (p.type as string) ?? "unknown", call: callDetail, transcript };
+  if (p.type !== "callTranscript") return null;
+  const data = p.data as Record<string, unknown> | undefined;
+  const object = data?.object as Record<string, unknown> | undefined;
+  return typeof object?.callId === "string" ? object.callId : null;
 }

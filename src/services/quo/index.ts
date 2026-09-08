@@ -43,6 +43,8 @@ export interface QuoService {
   listUsers(): Promise<QuoUser[]>;
   /** Lists calls-with-transcripts for one inbox. Mirrors Quo's inbox-scoped, cursor-paginated model. */
   listCallsWithTranscripts(params: QuoListCallsParams): Promise<QuoPage<{ call: QuoCallDetail; transcript: QuoTranscript | null }>>;
+  /** Fetches one call by id plus its transcript (if ready). Used by the webhook receiver, which is only told a callId. */
+  getCallWithTranscript(callId: string): Promise<{ call: QuoCallDetail; transcript: QuoTranscript | null } | null>;
   verifyWebhookSignature(rawBody: string, signatureHeader: string | null): boolean;
   testConnection(): Promise<{ ok: boolean; detail: string }>;
 }
@@ -289,14 +291,36 @@ class LiveQuoService implements QuoService {
     return { items, nextPageToken: null };
   }
 
+  async getCallWithTranscript(callId: string): Promise<{ call: QuoCallDetail; transcript: QuoTranscript | null } | null> {
+    const envelope = await this.requestOptional<{ data: RawCall }>(`/v1/calls/${callId}`);
+    if (!envelope) return null;
+    const raw = envelope.data;
+
+    const inboxes = await this.listInboxes();
+    const inbox = inboxes.find((i) => i.id === raw.phoneNumberId);
+    if (!inbox) return null;
+
+    const call = this.toCallDetail(inbox.phoneNumber, raw);
+    const transcript = await this.fetchTranscript(callId);
+    return { call, transcript };
+  }
+
   verifyWebhookSignature(rawBody: string, signatureHeader: string | null): boolean {
-    // Placeholder HMAC check structure — replace the algorithm with Quo's documented
-    // scheme once verified. Never accept a webhook silently when a secret is configured.
+    // Quo's real scheme (confirmed via docs): header "openphone-signature" formatted
+    // as "hmac;1;<timestampMs>;<base64 digest>". The digest is
+    // HMAC-SHA256(key = base64-decoded signing secret, message = timestamp + rawBody),
+    // base64-encoded. Never accept a webhook silently when a secret is configured.
     if (!process.env.WEBHOOK_SECRET) return true;
     if (!signatureHeader) return false;
-    const expected = createHmac("sha256", process.env.WEBHOOK_SECRET).update(rawBody).digest("hex");
+
+    const parts = signatureHeader.split(";");
+    if (parts.length !== 4 || parts[0] !== "hmac") return false;
+    const [, , timestamp, providedDigest] = parts;
+
     try {
-      return timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHeader));
+      const key = Buffer.from(process.env.WEBHOOK_SECRET, "base64");
+      const expectedDigest = createHmac("sha256", key).update(timestamp + rawBody).digest("base64");
+      return timingSafeEqual(Buffer.from(expectedDigest), Buffer.from(providedDigest));
     } catch {
       return false;
     }
@@ -321,6 +345,9 @@ class DemoQuoService implements QuoService {
   }
   async listCallsWithTranscripts(): Promise<QuoPage<{ call: QuoCallDetail; transcript: QuoTranscript | null }>> {
     return { items: [], nextPageToken: null };
+  }
+  async getCallWithTranscript(): Promise<{ call: QuoCallDetail; transcript: QuoTranscript | null } | null> {
+    return null;
   }
   verifyWebhookSignature(): boolean {
     return true;
