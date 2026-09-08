@@ -100,13 +100,18 @@ class LiveHubSpotService implements HubSpotService {
   }
 
   async getDealsForContact(contactId: string): Promise<HubSpotDeal[]> {
-    const assoc = await this.request<{ results: Array<{ id: string }> }>(
+    // The v4 associations response has no "id" field — each result carries the
+    // related object's id as "toObjectId". Reading "id" (as this code previously did)
+    // silently comes back undefined, which only surfaced once a real matched contact
+    // actually had an associated deal: it built a request to
+    // /crm/v3/objects/deals/undefined and HubSpot returned a 404.
+    const assoc = await this.request<{ results: Array<{ toObjectId: number | string }> }>(
       `/crm/v4/objects/contacts/${contactId}/associations/deals`
     );
     const deals: HubSpotDeal[] = [];
-    for (const { id } of assoc.results) {
+    for (const { toObjectId } of assoc.results) {
       const deal = await this.request<{ id: string; properties: Record<string, string | null> }>(
-        `/crm/v3/objects/deals/${id}?properties=${DEAL_PROPERTIES.join(",")}`
+        `/crm/v3/objects/deals/${toObjectId}?properties=${DEAL_PROPERTIES.join(",")}`
       );
       deals.push({
         id: deal.id,

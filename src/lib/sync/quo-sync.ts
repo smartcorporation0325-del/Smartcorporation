@@ -122,8 +122,12 @@ export async function analyzePendingCalls(timeBudgetMs = 200_000): Promise<{ ana
 
   for (const { id } of queue) {
     if (Date.now() - startedAt > timeBudgetMs) break;
-    const result = await rerunAnalysisForCall(id);
-    if (result.status === "failed" && result.error) errors.push(result.error);
+    try {
+      const result = await rerunAnalysisForCall(id);
+      if (result.status === "failed" && result.error) errors.push(result.error);
+    } catch (err) {
+      errors.push(`${id}: ${err instanceof Error ? err.message : String(err)}`);
+    }
     analyzed++;
   }
 
@@ -175,9 +179,16 @@ export async function syncRecentQuoCalls(
       const page = await quo.listCallsWithTranscripts({ inboxPhoneNumber: inbox.phoneNumber, createdAfter, createdBefore });
       for (const { call, transcript } of page.items) {
         inspected++;
-        const result = await ingestQuoCall(call, transcript, repIdForQuoUser, { skipAnalysis: true });
-        if (result.error) errors.push(result.error);
-        else if (result.created) ingested++;
+        // One bad call (e.g. an unexpected HubSpot response while matching) must not
+        // abort the rest of a multi-call batch — confirmed in production: a single
+        // unhandled error here silently killed an entire 30-call sync.
+        try {
+          const result = await ingestQuoCall(call, transcript, repIdForQuoUser, { skipAnalysis: true });
+          if (result.error) errors.push(result.error);
+          else if (result.created) ingested++;
+        } catch (err) {
+          errors.push(`${call.id}: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
     }
 
