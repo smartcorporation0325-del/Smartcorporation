@@ -40,11 +40,9 @@ export function IntegrationActions({ provider }: { provider: "quo" | "hubspot" |
     setMessage(null);
     startTransition(async () => {
       const result = await syncQuoNowAction(range, range === "custom" ? customDate : undefined);
-      setMessage(
-        result.errors.length
-          ? `Sync failed: ${result.errors[0]}`
-          : `Inspected ${result.inspected} call(s), ingested ${result.ingested} new.`
-      );
+      const base = `Inspected ${result.inspected} call(s), ingested ${result.ingested} new, analyzed ${result.analyzed}.`;
+      const pending = result.pendingAnalysis > 0 ? ` ${result.pendingAnalysis} still need analysis — click Sync now again to continue.` : "";
+      setMessage(result.errors.length ? `Sync failed: ${result.errors[0]}` : base + pending);
     });
   }
 

@@ -10,6 +10,8 @@ export interface IngestResult {
   callId: string | null;
   created: boolean;
   transcriptReady: boolean;
+  /** True when a transcript is now ready but analysis was deliberately deferred (see skipAnalysis). */
+  needsAnalysis: boolean;
   error?: string;
 }
 
@@ -19,17 +21,28 @@ export interface IngestResult {
  * association engine, stores the transcript if ready (else marks it pending), and
  * kicks off analysis only once a transcript is available. Never creates a duplicate
  * analysis for a call we've already ingested (Section 20).
+ *
+ * `skipAnalysis` (default false): the webhook receiver processes exactly one call per
+ * request, so it can safely run analysis inline. A bulk "Sync now" over a wide date
+ * range can touch dozens of calls in one request — running Claude on every one of them
+ * synchronously blew past Vercel's function timeout (confirmed in production: a
+ * 14-day sync of ~30 calls was killed mid-run after 300s, silently leaving whichever
+ * calls hadn't been reached yet without a transcript or analysis). Bulk sync passes
+ * skipAnalysis: true to keep ingestion fast, then runs a separate time-boxed analysis
+ * pass afterward (see analyzePendingCalls).
  */
 export async function ingestQuoCall(
   call: QuoCallDetail,
   transcript: QuoTranscript | null,
-  quoUserIdToRepId: (quoUserId: string | null) => Promise<string | null>
+  quoUserIdToRepId: (quoUserId: string | null) => Promise<string | null>,
+  options?: { skipAnalysis?: boolean }
 ): Promise<IngestResult> {
+  const skipAnalysis = options?.skipAnalysis ?? false;
   if (!isSupabaseConfigured()) {
-    return { callId: null, created: false, transcriptReady: false, error: "Supabase not configured — demo mode has no durable call ingest target." };
+    return { callId: null, created: false, transcriptReady: false, needsAnalysis: false, error: "Supabase not configured — demo mode has no durable call ingest target." };
   }
   const admin = getSupabaseAdminClient();
-  if (!admin) return { callId: null, created: false, transcriptReady: false, error: "Supabase admin client not configured." };
+  if (!admin) return { callId: null, created: false, transcriptReady: false, needsAnalysis: false, error: "Supabase admin client not configured." };
 
   const { data: existing } = await admin.from("calls").select("id, analysis_status, transcript_status").eq("quo_call_id", call.id).maybeSingle();
 
@@ -39,9 +52,10 @@ export async function ingestQuoCall(
       const transcriptText = transcript.segments.map((s) => `${s.speaker}: ${s.text}`).join("\n");
       await admin.from("call_transcripts").insert({ call_id: existing.id, transcript_text: transcriptText, source: "quo" });
       await admin.from("calls").update({ transcript_status: "ready", analysis_status: "pending" }).eq("id", existing.id);
-      await rerunAnalysisForCall(existing.id);
+      if (!skipAnalysis) await rerunAnalysisForCall(existing.id);
+      return { callId: existing.id, created: false, transcriptReady: true, needsAnalysis: skipAnalysis };
     }
-    return { callId: existing.id, created: false, transcriptReady: transcript?.status === "ready" };
+    return { callId: existing.id, created: false, transcriptReady: transcript?.status === "ready", needsAnalysis: false };
   }
 
   const localContact = call.participantPhoneNumber
@@ -68,18 +82,52 @@ export async function ingestQuoCall(
     .single();
 
   if (error || !newCall) {
-    return { callId: null, created: false, transcriptReady: false, error: error?.message ?? "Failed to create call." };
+    return { callId: null, created: false, transcriptReady: false, needsAnalysis: false, error: error?.message ?? "Failed to create call." };
   }
 
   if (transcript?.status === "ready" && transcript.segments.length) {
     const transcriptText = transcript.segments.map((s) => `${s.speaker}: ${s.text}`).join("\n");
     await admin.from("call_transcripts").insert({ call_id: newCall.id, transcript_text: transcriptText, source: "quo" });
     await admin.from("calls").update({ analysis_status: "pending" }).eq("id", newCall.id);
-    await rerunAnalysisForCall(newCall.id);
-    return { callId: newCall.id, created: true, transcriptReady: true };
+    if (!skipAnalysis) await rerunAnalysisForCall(newCall.id);
+    return { callId: newCall.id, created: true, transcriptReady: true, needsAnalysis: skipAnalysis };
   }
 
-  return { callId: newCall.id, created: true, transcriptReady: false };
+  return { callId: newCall.id, created: true, transcriptReady: false, needsAnalysis: false };
+}
+
+/**
+ * Runs analysis for calls left in analysis_status='pending' by a skipAnalysis ingest,
+ * stopping once the given time budget is spent rather than a fixed count — an 8-minute
+ * call's analysis takes much longer than a 30-second one, so a count-based cap under-
+ * or over-shoots the real risk (another 300s timeout). Callers re-invoke (e.g. the user
+ * clicking "Sync now" again) to keep working through the backlog.
+ */
+export async function analyzePendingCalls(timeBudgetMs = 200_000): Promise<{ analyzed: number; remaining: number; errors: string[] }> {
+  if (!isSupabaseConfigured()) return { analyzed: 0, remaining: 0, errors: [] };
+  const admin = getSupabaseAdminClient();
+  if (!admin) return { analyzed: 0, remaining: 0, errors: [] };
+
+  const { data: pending } = await admin
+    .from("calls")
+    .select("id")
+    .eq("transcript_status", "ready")
+    .eq("analysis_status", "pending")
+    .order("started_at", { ascending: false });
+
+  const errors: string[] = [];
+  let analyzed = 0;
+  const startedAt = Date.now();
+  const queue = pending ?? [];
+
+  for (const { id } of queue) {
+    if (Date.now() - startedAt > timeBudgetMs) break;
+    const result = await rerunAnalysisForCall(id);
+    if (result.status === "failed" && result.error) errors.push(result.error);
+    analyzed++;
+  }
+
+  return { analyzed, remaining: queue.length - analyzed, errors };
 }
 
 export interface SyncWindow {
@@ -95,11 +143,11 @@ export interface SyncWindow {
  */
 export async function syncRecentQuoCalls(
   window: SyncWindow = { createdAfter: new Date(Date.now() - 24 * 3600 * 1000).toISOString() }
-): Promise<{ inspected: number; ingested: number; errors: string[] }> {
+): Promise<{ inspected: number; ingested: number; analyzed: number; pendingAnalysis: number; errors: string[] }> {
   if (!isQuoConfigured()) {
     const message = "QUO_API_KEY is not configured — nothing to sync. Demo data is already loaded.";
     await writeSyncLog({ provider: "quo", action: "sync_now", status: "error", errorMessage: message });
-    return { inspected: 0, ingested: 0, errors: [message] };
+    return { inspected: 0, ingested: 0, analyzed: 0, pendingAnalysis: 0, errors: [message] };
   }
 
   const quo = getQuoService();
@@ -120,11 +168,14 @@ export async function syncRecentQuoCalls(
 
     const { createdAfter, createdBefore } = window;
 
+    // Ingestion only (no Claude calls here) — a wide date range can cover dozens of
+    // calls, and running analysis inline for every one of them blew past Vercel's
+    // request timeout. See ingestQuoCall's skipAnalysis doc for the full story.
     for (const inbox of inboxes) {
       const page = await quo.listCallsWithTranscripts({ inboxPhoneNumber: inbox.phoneNumber, createdAfter, createdBefore });
       for (const { call, transcript } of page.items) {
         inspected++;
-        const result = await ingestQuoCall(call, transcript, repIdForQuoUser);
+        const result = await ingestQuoCall(call, transcript, repIdForQuoUser, { skipAnalysis: true });
         if (result.error) errors.push(result.error);
         else if (result.created) ingested++;
       }
@@ -132,18 +183,23 @@ export async function syncRecentQuoCalls(
 
     void users; // reserved for future user-level filtering/reporting
 
+    // Now spend whatever's left of the request budget analyzing what just got
+    // ingested (plus anything left pending from an earlier sync).
+    const { analyzed, remaining, errors: analysisErrors } = await analyzePendingCalls();
+    errors.push(...analysisErrors);
+
     await writeSyncLog({
       provider: "quo",
       action: "sync_now",
       status: errors.length ? "error" : "success",
-      payloadReference: `inspected=${inspected} ingested=${ingested}`,
+      payloadReference: `inspected=${inspected} ingested=${ingested} analyzed=${analyzed} pending=${remaining}`,
       errorMessage: errors[0] ?? null,
     });
 
-    return { inspected, ingested, errors };
+    return { inspected, ingested, analyzed, pendingAnalysis: remaining, errors };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await writeSyncLog({ provider: "quo", action: "sync_now", status: "error", errorMessage: message });
-    return { inspected, ingested, errors: [message] };
+    return { inspected, ingested, analyzed: 0, pendingAnalysis: 0, errors: [message] };
   }
 }
