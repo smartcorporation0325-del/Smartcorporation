@@ -258,34 +258,58 @@ class LiveQuoService implements QuoService {
 
     // No participant specified: discover conversations for this inbox, then list calls
     // per participant. Quo has no single "all calls for this inbox" endpoint.
-    const conversations = await this.request<{ data: RawConversation[] }>(
-      `/v1/conversations${buildQuery({ phoneNumbers: [params.inboxPhoneNumber], maxResults: 50 })}`
-    );
-
+    //
+    // Conversations are returned most-recent-first, so a single 50-conversation page
+    // only reaches a few days back on an active inbox — a requested window older than
+    // that (e.g. "last month") would silently miss every call in it. Page backward
+    // until either we've covered the requested window or run out of conversations,
+    // capped so a misbehaving API can't loop forever.
     const items: { call: QuoCallDetail; transcript: QuoTranscript | null }[] = [];
     const seenCallIds = new Set<string>();
-    for (const convo of conversations.data) {
-      if (params.createdAfter && convo.lastActivityAt && convo.lastActivityAt < params.createdAfter) continue;
-      const participant = convo.participants.find((p) => p !== params.inboxPhoneNumber);
-      if (!participant) continue;
+    let convoPageToken: string | undefined;
+    const MAX_CONVERSATION_PAGES = 20;
 
-      const callsPage = await this.request<{ data: RawCall[] }>(
-        `/v1/calls${buildQuery({
-          phoneNumberId: inbox.id,
-          participants: [participant],
-          userId: params.userId,
+    pageLoop: for (let page = 0; page < MAX_CONVERSATION_PAGES; page++) {
+      const conversations = await this.request<{ data: RawConversation[]; nextPageToken: string | null }>(
+        `/v1/conversations${buildQuery({
+          phoneNumbers: [params.inboxPhoneNumber],
+          maxResults: 50,
+          pageToken: convoPageToken,
           createdAfter: params.createdAfter,
           createdBefore: params.createdBefore,
-          maxResults: params.maxResults ?? 20,
         })}`
       );
-      for (const raw of callsPage.data) {
-        if (seenCallIds.has(raw.id)) continue;
-        seenCallIds.add(raw.id);
-        const call = this.toCallDetail(params.inboxPhoneNumber, raw);
-        const transcript = await this.fetchTranscript(call.id);
-        items.push({ call, transcript });
+
+      for (const convo of conversations.data) {
+        if (params.createdAfter && convo.lastActivityAt && convo.lastActivityAt < params.createdAfter) {
+          // Sorted most-recent-first: once we're past the window, every remaining
+          // conversation (this page and any later page) is older still.
+          break pageLoop;
+        }
+        const participant = convo.participants.find((p) => p !== params.inboxPhoneNumber);
+        if (!participant) continue;
+
+        const callsPage = await this.request<{ data: RawCall[] }>(
+          `/v1/calls${buildQuery({
+            phoneNumberId: inbox.id,
+            participants: [participant],
+            userId: params.userId,
+            createdAfter: params.createdAfter,
+            createdBefore: params.createdBefore,
+            maxResults: params.maxResults ?? 20,
+          })}`
+        );
+        for (const raw of callsPage.data) {
+          if (seenCallIds.has(raw.id)) continue;
+          seenCallIds.add(raw.id);
+          const call = this.toCallDetail(params.inboxPhoneNumber, raw);
+          const transcript = await this.fetchTranscript(call.id);
+          items.push({ call, transcript });
+        }
       }
+
+      if (!conversations.nextPageToken) break;
+      convoPageToken = conversations.nextPageToken;
     }
 
     return { items, nextPageToken: null };
