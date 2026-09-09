@@ -110,6 +110,7 @@ export async function ingestQuoCall(
     .insert({
       quo_call_id: call.id,
       contact_id: localContact?.contactId ?? null,
+      deal_id: localContact?.dealId ?? null,
       sales_rep_id: salesRepId,
       started_at: call.createdAt,
       duration_seconds: call.durationSeconds,

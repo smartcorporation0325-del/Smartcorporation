@@ -55,6 +55,36 @@ export async function matchContactToHubSpot(input: MatchInput): Promise<MatchRes
   return { matchedBy: "none", hubspotContact: null, hubspotDeals: [] };
 }
 
+/**
+ * Picks the deal to attach to a call for a resolved contact: prefer an open deal
+ * (most recently created), falling back to the most recently created deal of any
+ * status if none are open. Used so calls.deal_id gets populated on every path that
+ * resolves a contact, not just the manual-association flow.
+ */
+async function getPrimaryDealIdForContact(
+  admin: NonNullable<ReturnType<typeof getSupabaseAdminClient>>,
+  contactId: string
+): Promise<string | null> {
+  const { data: openDeal } = await admin
+    .from("deals")
+    .select("id")
+    .eq("contact_id", contactId)
+    .eq("status", "open")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (openDeal) return openDeal.id;
+
+  const { data: anyDeal } = await admin
+    .from("deals")
+    .select("id")
+    .eq("contact_id", contactId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return anyDeal?.id ?? null;
+}
+
 function normalizePhone(phone: string): string {
   const digits = phone.replace(/[^\d+]/g, "");
   if (digits.startsWith("+")) return digits;
@@ -72,6 +102,7 @@ function normalizePhone(phone: string): string {
 export async function findOrCreateLocalContact(input: MatchInput): Promise<{
   contactId: string;
   hubspotContactId: string | null;
+  dealId: string | null;
   matchedBy: MatchResult["matchedBy"] | "local_record";
 } | null> {
   if (!isSupabaseConfigured()) return null;
@@ -87,12 +118,16 @@ export async function findOrCreateLocalContact(input: MatchInput): Promise<{
   let staleLocalContactId: string | null = null;
   if (input.phone) {
     const { data } = await admin.from("contacts").select("id, hubspot_contact_id").eq("phone", input.phone).maybeSingle();
-    if (data?.hubspot_contact_id) return { contactId: data.id, hubspotContactId: data.hubspot_contact_id, matchedBy: "local_record" };
+    if (data?.hubspot_contact_id) {
+      return { contactId: data.id, hubspotContactId: data.hubspot_contact_id, dealId: await getPrimaryDealIdForContact(admin, data.id), matchedBy: "local_record" };
+    }
     if (data) staleLocalContactId = data.id;
   }
   if (input.email) {
     const { data } = await admin.from("contacts").select("id, hubspot_contact_id").eq("email", input.email).maybeSingle();
-    if (data?.hubspot_contact_id) return { contactId: data.id, hubspotContactId: data.hubspot_contact_id, matchedBy: "local_record" };
+    if (data?.hubspot_contact_id) {
+      return { contactId: data.id, hubspotContactId: data.hubspot_contact_id, dealId: await getPrimaryDealIdForContact(admin, data.id), matchedBy: "local_record" };
+    }
     if (data) staleLocalContactId = staleLocalContactId ?? data.id;
   }
 
@@ -132,11 +167,16 @@ export async function findOrCreateLocalContact(input: MatchInput): Promise<{
           );
         }
       }
-      return { contactId: updatedContact.id, hubspotContactId: match.hubspotContact.id, matchedBy: match.matchedBy };
+      return {
+        contactId: updatedContact.id,
+        hubspotContactId: match.hubspotContact.id,
+        dealId: await getPrimaryDealIdForContact(admin, updatedContact.id),
+        matchedBy: match.matchedBy,
+      };
     }
   }
   if (staleLocalContactId && !match.hubspotContact) {
-    return { contactId: staleLocalContactId, hubspotContactId: null, matchedBy: "local_record" };
+    return { contactId: staleLocalContactId, hubspotContactId: null, dealId: null, matchedBy: "local_record" };
   }
 
   const { data: newContact, error } = await admin
@@ -170,7 +210,12 @@ export async function findOrCreateLocalContact(input: MatchInput): Promise<{
     }
   }
 
-  return { contactId: newContact.id, hubspotContactId: match.hubspotContact?.id ?? null, matchedBy: match.matchedBy };
+  return {
+    contactId: newContact.id,
+    hubspotContactId: match.hubspotContact?.id ?? null,
+    dealId: match.hubspotDeals.length ? await getPrimaryDealIdForContact(admin, newContact.id) : null,
+    matchedBy: match.matchedBy,
+  };
 }
 
 export interface ManualAssociateResult {
