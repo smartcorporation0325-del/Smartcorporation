@@ -7,6 +7,7 @@ import {
   testQuoConnectionAction,
   testHubSpotConnectionAction,
   syncQuoNowAction,
+  backfillCallAssociationsAction,
   type SyncRangePreset,
 } from "@/app/(app)/settings/integrations/actions";
 
@@ -46,6 +47,16 @@ export function IntegrationActions({ provider }: { provider: "quo" | "hubspot" |
     });
   }
 
+  function backfillAssociations() {
+    setMessage(null);
+    startTransition(async () => {
+      const result = await backfillCallAssociationsAction();
+      const base = `Filled in contact/deal on ${result.updated} call(s), ${result.stillUnresolved} still unresolved (no match found).`;
+      const remaining = result.remaining > 0 ? ` ${result.remaining} more queued — click again to continue.` : "";
+      setMessage(result.errors.length ? `Backfill failed: ${result.errors[0]}` : base + remaining);
+    });
+  }
+
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -72,6 +83,9 @@ export function IntegrationActions({ provider }: { provider: "quo" | "hubspot" |
             )}
             <Button size="sm" variant="secondary" onClick={syncNow} disabled={pending || (range === "custom" && !customDate)}>
               {pending ? "Syncing…" : "Sync now"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={backfillAssociations} disabled={pending}>
+              {pending ? "Working…" : "Fill in missing contacts/deals"}
             </Button>
           </>
         )}

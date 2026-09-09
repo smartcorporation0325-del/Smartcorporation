@@ -1,7 +1,7 @@
 import { getQuoService, isQuoConfigured } from "@/services/quo";
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { findOrCreateLocalContact } from "@/lib/matching/associate";
+import { findOrCreateLocalContact, getPrimaryDealIdForContact } from "@/lib/matching/associate";
 import { rerunAnalysisForCall } from "@/lib/pipeline/analyze";
 import { writeSyncLog } from "@/lib/data/sync-logs";
 import type { QuoCallDetail, QuoTranscript } from "@/services/quo/types";
@@ -178,6 +178,85 @@ export async function analyzePendingCalls(timeBudgetMs = 200_000): Promise<{ ana
   }
 
   return { analyzed, remaining: queue.length - analyzed, errors };
+}
+
+/**
+ * One-time backfill for calls ingested before findOrCreateLocalContact learned to
+ * (a) retry a stale HubSpot-less local contact instead of caching it blank forever,
+ * and (b) resolve a deal_id at all. Those calls already exist with contact_id and/or
+ * deal_id null and nothing re-touches them on an ordinary re-sync (the "already
+ * exists" path in ingestQuoCall only refreshes duration/status/transcript). Safe to
+ * call repeatedly — every call it processes is one it can already prove needs work,
+ * and it only ever fills in currently-null fields.
+ *
+ * Time-boxed like analyzePendingCalls: a call missing its contact needs a live Quo
+ * lookup (participant phone isn't stored on our calls row) plus a HubSpot search, so
+ * a large backlog can't safely run unbounded in one serverless invocation. Re-invoke
+ * (e.g. clicking the button again) to keep working through what's left.
+ */
+export async function backfillCallAssociations(
+  timeBudgetMs = 200_000
+): Promise<{ updated: number; stillUnresolved: number; remaining: number; errors: string[] }> {
+  if (!isSupabaseConfigured()) return { updated: 0, stillUnresolved: 0, remaining: 0, errors: [] };
+  const admin = getSupabaseAdminClient();
+  if (!admin) return { updated: 0, stillUnresolved: 0, remaining: 0, errors: [] };
+
+  const { data: candidates } = await admin
+    .from("calls")
+    .select("id, quo_call_id, contact_id, deal_id")
+    .or("contact_id.is.null,deal_id.is.null")
+    .not("quo_call_id", "is", null)
+    .order("started_at", { ascending: false });
+
+  const queue = candidates ?? [];
+  const errors: string[] = [];
+  let updated = 0;
+  let stillUnresolved = 0;
+  const startedAt = Date.now();
+  const quo = isQuoConfigured() ? getQuoService() : null;
+
+  for (const row of queue) {
+    if (Date.now() - startedAt > timeBudgetMs) break;
+    try {
+      if (row.contact_id) {
+        // Contact already resolved, just deal_id is missing — no Quo call needed.
+        const dealId = await getPrimaryDealIdForContact(admin, row.contact_id);
+        if (dealId) {
+          await admin.from("calls").update({ deal_id: dealId }).eq("id", row.id);
+          updated++;
+        } else {
+          stillUnresolved++;
+        }
+        continue;
+      }
+
+      if (!quo) {
+        stillUnresolved++;
+        continue;
+      }
+      const fetched = await quo.getCallWithTranscript(row.quo_call_id as string);
+      const phone = fetched?.call.participantPhoneNumber ?? null;
+      if (!phone) {
+        stillUnresolved++;
+        continue;
+      }
+      const localContact = await findOrCreateLocalContact({ phone });
+      if (localContact) {
+        await admin
+          .from("calls")
+          .update({ contact_id: localContact.contactId, deal_id: localContact.dealId })
+          .eq("id", row.id);
+        updated++;
+      } else {
+        stillUnresolved++;
+      }
+    } catch (err) {
+      errors.push(`${row.id}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  const processed = updated + stillUnresolved + errors.length;
+  return { updated, stillUnresolved, remaining: queue.length - processed, errors };
 }
 
 export interface SyncWindow {

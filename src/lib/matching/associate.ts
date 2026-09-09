@@ -61,7 +61,7 @@ export async function matchContactToHubSpot(input: MatchInput): Promise<MatchRes
  * status if none are open. Used so calls.deal_id gets populated on every path that
  * resolves a contact, not just the manual-association flow.
  */
-async function getPrimaryDealIdForContact(
+export async function getPrimaryDealIdForContact(
   admin: NonNullable<ReturnType<typeof getSupabaseAdminClient>>,
   contactId: string
 ): Promise<string | null> {

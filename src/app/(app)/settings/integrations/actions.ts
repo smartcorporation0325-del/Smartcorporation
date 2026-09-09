@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getQuoService } from "@/services/quo";
 import { getHubSpotService } from "@/services/hubspot";
 import { writeSyncLog } from "@/lib/data/sync-logs";
-import { syncRecentQuoCalls, type SyncWindow } from "@/lib/sync/quo-sync";
+import { syncRecentQuoCalls, backfillCallAssociations, type SyncWindow } from "@/lib/sync/quo-sync";
 
 export type SyncRangePreset = "24h" | "3d" | "7d" | "14d" | "this_month" | "last_month" | "custom";
 
@@ -57,6 +57,24 @@ export async function testHubSpotConnectionAction() {
 
 export async function syncQuoNowAction(preset: SyncRangePreset = "24h", customDate?: string) {
   const result = await syncRecentQuoCalls(resolveSyncWindow(preset, customDate));
+  revalidatePath("/settings/sync");
+  revalidatePath("/calls");
+  return result;
+}
+
+/**
+ * Fills in contact_id/deal_id on calls ingested before findOrCreateLocalContact was
+ * fixed to retry HubSpot instead of caching a blank match, and to resolve a deal at
+ * all. Safe to click repeatedly (Section: backfill, one-time cleanup for existing data).
+ */
+export async function backfillCallAssociationsAction() {
+  const result = await backfillCallAssociations();
+  await writeSyncLog({
+    provider: "quo",
+    action: "backfill_associations",
+    status: result.errors.length ? "error" : "success",
+    errorMessage: result.errors[0] ?? null,
+  });
   revalidatePath("/settings/sync");
   revalidatePath("/calls");
   return result;
