@@ -266,7 +266,12 @@ export async function syncRecentQuoCalls(
 
     // Now spend whatever's left of the request budget (capped at 120s) analyzing what
     // just got ingested, plus anything left pending from an earlier sync.
-    const analysisBudgetMs = Math.max(0, Math.min(120_000, 260_000 - (Date.now() - syncStartedAt)));
+    // Ingestion is near-instant once nothing new needs fetching (the common case on a
+    // repeat sync), so most of the request's remaining time is free for analysis —
+    // the old 120s cap left most of a 300s request unused and meant a large pending
+    // backlog only cleared one call per click. Give analysis nearly everything that's
+    // left, capped short of the hard 300s Vercel limit for overhead margin.
+    const analysisBudgetMs = Math.max(0, 270_000 - (Date.now() - syncStartedAt));
     const { analyzed, remaining, errors: analysisErrors } = await analyzePendingCalls(analysisBudgetMs);
     errors.push(...analysisErrors);
 
