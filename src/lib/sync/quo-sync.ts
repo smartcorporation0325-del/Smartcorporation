@@ -64,14 +64,36 @@ export async function ingestQuoCall(
   const admin = getSupabaseAdminClient();
   if (!admin) return { callId: null, created: false, transcriptReady: false, needsAnalysis: false, error: "Supabase admin client not configured." };
 
-  const { data: existing } = await admin.from("calls").select("id, analysis_status, transcript_status").eq("quo_call_id", call.id).maybeSingle();
+  const { data: existing } = await admin
+    .from("calls")
+    .select("id, analysis_status, transcript_status, duration_seconds, status")
+    .eq("quo_call_id", call.id)
+    .maybeSingle();
 
   if (existing) {
+    // A call first seen while still ringing/in-progress got its duration_seconds=0 and
+    // status='in_progress' frozen in at insert time — nothing ever revisited those
+    // fields afterward, only transcript/analysis status. Confirmed in production: a
+    // real 15-minute completed call sat in the list looking like a 0-second call
+    // forever. Every re-sync now refreshes duration/status from the latest Quo data.
+    const freshStatus = mapQuoCallStatus(call.status);
+    if (existing.duration_seconds !== call.durationSeconds || existing.status !== freshStatus) {
+      await admin.from("calls").update({ duration_seconds: call.durationSeconds, status: freshStatus }).eq("id", existing.id);
+    }
+
     // Idempotent: only act if the transcript just became ready and analysis hasn't run yet.
     if (transcript?.status === "ready" && existing.transcript_status !== "ready") {
       const transcriptText = transcript.segments.map((s) => `${s.speaker}: ${s.text}`).join("\n");
       await admin.from("call_transcripts").insert({ call_id: existing.id, transcript_text: transcriptText, source: "quo" });
       await admin.from("calls").update({ transcript_status: "ready", analysis_status: "pending" }).eq("id", existing.id);
+      if (!skipAnalysis) await rerunAnalysisForCall(existing.id);
+      return { callId: existing.id, created: false, transcriptReady: true, needsAnalysis: skipAnalysis };
+    }
+    // A transcript that's ready but whose analysis previously failed (e.g. an
+    // Anthropic billing error) otherwise stays stuck forever — analyzePendingCalls
+    // only picks up 'pending', never 'failed'. Requeue it so a re-sync retries.
+    if (transcript?.status === "ready" && existing.analysis_status === "failed") {
+      await admin.from("calls").update({ analysis_status: "pending" }).eq("id", existing.id);
       if (!skipAnalysis) await rerunAnalysisForCall(existing.id);
       return { callId: existing.id, created: false, transcriptReady: true, needsAnalysis: skipAnalysis };
     }
@@ -128,11 +150,14 @@ export async function analyzePendingCalls(timeBudgetMs = 200_000): Promise<{ ana
   const admin = getSupabaseAdminClient();
   if (!admin) return { analyzed: 0, remaining: 0, errors: [] };
 
+  // Include 'failed' alongside 'pending' as a safety net — most failures retry via the
+  // ingest-time requeue above, but this catches any that reach 'failed' another way
+  // (e.g. a direct "Re-run analysis" click that failed) without getting stuck forever.
   const { data: pending } = await admin
     .from("calls")
     .select("id")
     .eq("transcript_status", "ready")
-    .eq("analysis_status", "pending")
+    .in("analysis_status", ["pending", "failed"])
     .order("started_at", { ascending: false });
 
   const errors: string[] = [];
@@ -229,7 +254,6 @@ export async function syncRecentQuoCalls(
         // unhandled error here silently killed an entire 30-call sync.
         try {
           const result = await ingestQuoCall(call, transcript, repIdForQuoUser, { skipAnalysis: true });
-          console.error(`[quo-debug] ingest call ${call.id} duration=${call.durationSeconds}s -> created=${result.created} callId=${result.callId} error=${result.error ?? "none"}`);
           if (result.error) errors.push(result.error);
           else if (result.created) ingested++;
         } catch (err) {

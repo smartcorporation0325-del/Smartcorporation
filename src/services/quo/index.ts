@@ -281,10 +281,8 @@ class LiveQuoService implements QuoService {
           createdBefore: params.createdBefore,
         })}`
       );
-      console.error(`[quo-debug] inbox=${params.inboxPhoneNumber} page=${page} conversations=${conversations.data.length}`);
 
       for (const convo of conversations.data) {
-        console.error(`[quo-debug] convo ${convo.id} participants=${JSON.stringify(convo.participants)} lastActivityAt=${convo.lastActivityAt}`);
         if (params.deadline && Date.now() > params.deadline) break pageLoop;
         if (params.createdAfter && convo.lastActivityAt && convo.lastActivityAt < params.createdAfter) {
           // Sorted most-recent-first: once we're past the window, every remaining
@@ -292,10 +290,7 @@ class LiveQuoService implements QuoService {
           break pageLoop;
         }
         const participant = convo.participants.find((p) => p !== params.inboxPhoneNumber);
-        if (!participant) {
-          console.error(`[quo-debug] convo ${convo.id} has no participant distinct from inbox — skipped`);
-          continue;
-        }
+        if (!participant) continue;
 
         const callsPage = await this.request<{ data: RawCall[] }>(
           `/v1/calls${buildQuery({
@@ -307,16 +302,8 @@ class LiveQuoService implements QuoService {
             maxResults: params.maxResults ?? 20,
           })}`
         );
-        console.error(
-          `[quo-debug] convo ${convo.id} participant=${participant} calls=${callsPage.data.length} raw=${JSON.stringify(
-            callsPage.data.map((r) => ({ id: r.id, duration: r.duration, status: r.status, direction: r.direction, createdAt: r.createdAt }))
-          )}`
-        );
         for (const raw of callsPage.data) {
-          if (seenCallIds.has(raw.id)) {
-            console.error(`[quo-debug] call ${raw.id} already seen this run (from another conversation) — skipped`);
-            continue;
-          }
+          if (seenCallIds.has(raw.id)) continue;
           seenCallIds.add(raw.id);
           const call = this.toCallDetail(params.inboxPhoneNumber, raw);
           const transcript = params.skipTranscriptForCallIds?.has(call.id) ? null : await this.fetchTranscript(call.id);
