@@ -79,17 +79,65 @@ export async function findOrCreateLocalContact(input: MatchInput): Promise<{
   if (!admin) return null;
 
   // Priority 3 first: do we already know this phone/email locally, HubSpot id and all?
+  // Only short-circuit when we actually have a hubspot_contact_id — a local row created
+  // from a call where the HubSpot search found nothing (hubspot_contact_id: null) must
+  // not be treated as a resolved match forever, otherwise the contact stays blank on
+  // every future call from the same number/email even after HubSpot gets a matching
+  // contact. Fall through to re-searching HubSpot in that case.
+  let staleLocalContactId: string | null = null;
   if (input.phone) {
     const { data } = await admin.from("contacts").select("id, hubspot_contact_id").eq("phone", input.phone).maybeSingle();
-    if (data) return { contactId: data.id, hubspotContactId: data.hubspot_contact_id, matchedBy: "local_record" };
+    if (data?.hubspot_contact_id) return { contactId: data.id, hubspotContactId: data.hubspot_contact_id, matchedBy: "local_record" };
+    if (data) staleLocalContactId = data.id;
   }
   if (input.email) {
     const { data } = await admin.from("contacts").select("id, hubspot_contact_id").eq("email", input.email).maybeSingle();
-    if (data) return { contactId: data.id, hubspotContactId: data.hubspot_contact_id, matchedBy: "local_record" };
+    if (data?.hubspot_contact_id) return { contactId: data.id, hubspotContactId: data.hubspot_contact_id, matchedBy: "local_record" };
+    if (data) staleLocalContactId = staleLocalContactId ?? data.id;
   }
 
   // Priorities 1-2: search HubSpot.
   const match = await matchContactToHubSpot(input);
+
+  // If we found a stale (HubSpot-less) local row and HubSpot now has a match, update
+  // that row in place instead of inserting a duplicate contact for the same phone/email.
+  if (staleLocalContactId && match.hubspotContact) {
+    const { data: updatedContact, error: updateError } = await admin
+      .from("contacts")
+      .update({
+        hubspot_contact_id: match.hubspotContact.id,
+        firstname: match.hubspotContact.firstname,
+        lastname: match.hubspotContact.lastname,
+        email: match.hubspotContact.email ?? input.email ?? null,
+        phone: match.hubspotContact.phone ?? input.phone ?? null,
+      })
+      .eq("id", staleLocalContactId)
+      .select()
+      .single();
+    if (!updateError && updatedContact) {
+      if (match.hubspotDeals.length) {
+        for (const deal of match.hubspotDeals) {
+          await admin.from("deals").upsert(
+            {
+              hubspot_deal_id: deal.id,
+              contact_id: updatedContact.id,
+              deal_name: deal.dealName,
+              stage: deal.stage,
+              pipeline: deal.pipeline,
+              amount: deal.amount,
+              status: deal.status,
+              close_date: deal.closeDate,
+            },
+            { onConflict: "hubspot_deal_id" }
+          );
+        }
+      }
+      return { contactId: updatedContact.id, hubspotContactId: match.hubspotContact.id, matchedBy: match.matchedBy };
+    }
+  }
+  if (staleLocalContactId && !match.hubspotContact) {
+    return { contactId: staleLocalContactId, hubspotContactId: null, matchedBy: "local_record" };
+  }
 
   const { data: newContact, error } = await admin
     .from("contacts")
