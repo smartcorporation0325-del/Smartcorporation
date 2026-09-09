@@ -69,12 +69,17 @@ export async function runCallAnalysis(
     jsonSchemaDescription: JSON_SHAPE_DESCRIPTION,
   });
 
-  const message = await client.messages.create({
+  // A real ~15-minute call (hundreds of dialogue segments, full scorecard + objections
+  // + coaching JSON) can still exceed 16000 output tokens — confirmed in production
+  // (Malik Thompson call, 15:29, truncated at 16000). Raised the cap and switched to
+  // streaming, since a non-streaming request this large risks an HTTP timeout.
+  const stream = client.messages.stream({
     model: MODEL,
-    max_tokens: 16000,
+    max_tokens: 32000,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: userPrompt }],
   });
+  const message = await stream.finalMessage();
 
   const textBlock = message.content.find((b) => b.type === "text");
   const rawText = textBlock && "text" in textBlock ? textBlock.text : "";
