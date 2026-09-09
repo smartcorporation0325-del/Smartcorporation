@@ -181,6 +181,46 @@ export async function analyzePendingCalls(timeBudgetMs = 200_000): Promise<{ ana
 }
 
 /**
+ * Cleans up contacts that were created from our own Quo inbox number instead of the
+ * real caller — a bug in toCallDetail (services/quo/index.ts) took raw.participants[0]
+ * without excluding the inbox's own number, so a call could get "matched" to itself
+ * (confirmed in production: a call's stored contact phone was the "Elite Gender
+ * Reveal" inbox number, not the caller). Unlinks any call pointing at such a contact
+ * (nulling contact_id/deal_id so backfillCallAssociations below can re-resolve it with
+ * the corrected participant), then deletes the bogus contact row itself — but only
+ * when it never matched HubSpot (hubspot_contact_id null); a real HubSpot contact
+ * that coincidentally shares a phone number with an inbox is left untouched.
+ */
+async function cleanupInboxNumberContacts(
+  admin: NonNullable<ReturnType<typeof getSupabaseAdminClient>>
+): Promise<{ callsUnlinked: number; contactsRemoved: number }> {
+  if (!isQuoConfigured()) return { callsUnlinked: 0, contactsRemoved: 0 };
+  const inboxes = await getQuoService().listInboxes();
+  const inboxNumbers = inboxes.map((i) => i.phoneNumber);
+  if (!inboxNumbers.length) return { callsUnlinked: 0, contactsRemoved: 0 };
+
+  const { data: badContacts } = await admin
+    .from("contacts")
+    .select("id, hubspot_contact_id")
+    .in("phone", inboxNumbers);
+
+  let callsUnlinked = 0;
+  let contactsRemoved = 0;
+  for (const contact of badContacts ?? []) {
+    const { data: affectedCalls } = await admin.from("calls").select("id").eq("contact_id", contact.id);
+    if (affectedCalls?.length) {
+      await admin.from("calls").update({ contact_id: null, deal_id: null }).eq("contact_id", contact.id);
+      callsUnlinked += affectedCalls.length;
+    }
+    if (!contact.hubspot_contact_id) {
+      await admin.from("contacts").delete().eq("id", contact.id);
+      contactsRemoved++;
+    }
+  }
+  return { callsUnlinked, contactsRemoved };
+}
+
+/**
  * One-time backfill for calls ingested before findOrCreateLocalContact learned to
  * (a) retry a stale HubSpot-less local contact instead of caching it blank forever,
  * and (b) resolve a deal_id at all. Those calls already exist with contact_id and/or
@@ -189,6 +229,9 @@ export async function analyzePendingCalls(timeBudgetMs = 200_000): Promise<{ ana
  * call repeatedly — every call it processes is one it can already prove needs work,
  * and it only ever fills in currently-null fields.
  *
+ * Also runs cleanupInboxNumberContacts first, so a call previously mismatched to our
+ * own inbox number gets unlinked and is picked up by the loop below in the same pass.
+ *
  * Time-boxed like analyzePendingCalls: a call missing its contact needs a live Quo
  * lookup (participant phone isn't stored on our calls row) plus a HubSpot search, so
  * a large backlog can't safely run unbounded in one serverless invocation. Re-invoke
@@ -196,10 +239,12 @@ export async function analyzePendingCalls(timeBudgetMs = 200_000): Promise<{ ana
  */
 export async function backfillCallAssociations(
   timeBudgetMs = 200_000
-): Promise<{ updated: number; stillUnresolved: number; remaining: number; errors: string[] }> {
-  if (!isSupabaseConfigured()) return { updated: 0, stillUnresolved: 0, remaining: 0, errors: [] };
+): Promise<{ updated: number; stillUnresolved: number; remaining: number; callsUnlinked: number; contactsRemoved: number; errors: string[] }> {
+  if (!isSupabaseConfigured()) return { updated: 0, stillUnresolved: 0, remaining: 0, callsUnlinked: 0, contactsRemoved: 0, errors: [] };
   const admin = getSupabaseAdminClient();
-  if (!admin) return { updated: 0, stillUnresolved: 0, remaining: 0, errors: [] };
+  if (!admin) return { updated: 0, stillUnresolved: 0, remaining: 0, callsUnlinked: 0, contactsRemoved: 0, errors: [] };
+
+  const { callsUnlinked, contactsRemoved } = await cleanupInboxNumberContacts(admin);
 
   const { data: candidates } = await admin
     .from("calls")
@@ -256,7 +301,7 @@ export async function backfillCallAssociations(
   }
 
   const processed = updated + stillUnresolved + errors.length;
-  return { updated, stillUnresolved, remaining: queue.length - processed, errors };
+  return { updated, stillUnresolved, remaining: queue.length - processed, callsUnlinked, contactsRemoved, errors };
 }
 
 export interface SyncWindow {

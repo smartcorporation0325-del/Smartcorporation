@@ -51,9 +51,10 @@ export function IntegrationActions({ provider }: { provider: "quo" | "hubspot" |
     setMessage(null);
     startTransition(async () => {
       const result = await backfillCallAssociationsAction();
+      const cleanup = result.callsUnlinked > 0 ? `Unlinked ${result.callsUnlinked} call(s) wrongly matched to your own inbox number (removed ${result.contactsRemoved} bogus contact(s)). ` : "";
       const base = `Filled in contact/deal on ${result.updated} call(s), ${result.stillUnresolved} still unresolved (no match found).`;
       const remaining = result.remaining > 0 ? ` ${result.remaining} more queued — click again to continue.` : "";
-      setMessage(result.errors.length ? `Backfill failed: ${result.errors[0]}` : base + remaining);
+      setMessage(result.errors.length ? `Backfill failed: ${result.errors[0]}` : cleanup + base + remaining);
     });
   }
 

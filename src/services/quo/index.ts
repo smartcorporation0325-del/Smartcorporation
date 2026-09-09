@@ -212,11 +212,19 @@ class LiveQuoService implements QuoService {
       raw.status === "missed" || raw.status === "no-answer" || raw.status === "abandoned" || raw.status === "voicemail" || raw.status === "in-progress"
         ? raw.status
         : "completed";
+    // raw.participants can include the inbox's own number alongside the external
+    // party's — confirmed in production: a call ended up with participantPhoneNumber
+    // set to our own inbox number (it was participants[0]) instead of the caller's,
+    // so it matched nothing in HubSpot and the contact/deal stayed blank forever.
+    // The conversation-discovery path below (convo.participants.find(...)) already
+    // excludes the inbox number; do the same here so a direct /v1/calls or
+    // /v1/calls/{id} fetch (webhook, backfill) can't leak our own number through.
+    const externalParticipant = raw.participants?.find((p) => p !== inboxPhoneNumber) ?? null;
     return {
       id: raw.id,
       conversationId: null,
       inboxPhoneNumber,
-      participantPhoneNumber: raw.participants?.[0] ?? null,
+      participantPhoneNumber: externalParticipant,
       userId: raw.userId ?? null,
       direction,
       status,
