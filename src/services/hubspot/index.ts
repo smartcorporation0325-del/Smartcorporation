@@ -50,7 +50,7 @@ export interface HubSpotService {
   // explicit, human-approved "Approve & Push to HubSpot" action (Section 8) — never
   // called from any automatic sync path.
   createNoteForContact(contactId: string, note: string): Promise<{ disabled: true } | { id: string }>;
-  createTaskForContact(contactId: string, task: { subject: string; body: string; dueDate?: string | null; priority?: "low" | "medium" | "high" }): Promise<{ disabled: true } | { id: string }>;
+  createTaskForContact(contactId: string, task: { subject: string; body: string; dueDate?: string | null; priority?: "low" | "medium" | "high"; ownerId?: string | null }): Promise<{ disabled: true } | { id: string }>;
 }
 
 interface PipelineStageInfo {
@@ -290,7 +290,7 @@ class LiveHubSpotService implements HubSpotService {
 
   async createTaskForContact(
     contactId: string,
-    task: { subject: string; body: string; dueDate?: string | null; priority?: "low" | "medium" | "high" }
+    task: { subject: string; body: string; dueDate?: string | null; priority?: "low" | "medium" | "high"; ownerId?: string | null }
   ): Promise<{ id: string }> {
     const priorityMap = { low: "LOW", medium: "MEDIUM", high: "HIGH" } as const;
     const created = await this.request<{ id: string }>("/crm/v3/objects/tasks", {
@@ -302,6 +302,7 @@ class LiveHubSpotService implements HubSpotService {
           hs_task_status: "NOT_STARTED",
           hs_task_priority: priorityMap[task.priority ?? "medium"],
           hs_timestamp: task.dueDate ? new Date(task.dueDate).getTime() : Date.now(),
+          ...(task.ownerId ? { hubspot_owner_id: task.ownerId } : {}),
         },
         associations: [
           {

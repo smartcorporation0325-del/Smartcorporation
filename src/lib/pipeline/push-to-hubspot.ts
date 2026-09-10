@@ -108,6 +108,7 @@ export async function pushAnalysisToHubSpot(callId: string, selected: PushableFi
           body: nextAction.close_strategy ?? nextAction.action ?? "",
           dueDate: nextAction.due_date,
           priority: nextAction.priority ?? "medium",
+          ownerId: call.sales_rep?.hubspot_owner_id ?? null,
         });
         taskId = "id" in task ? task.id : null;
       }
