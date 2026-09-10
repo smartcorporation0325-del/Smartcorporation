@@ -1,3 +1,4 @@
+import { getSectionScore } from "@/lib/utils";
 import type { CallWithRelations } from "@/types/db";
 
 const INTENT_KEYWORDS = ["availability", "deposit", "book", "reserve", "next step", "package", "location", "date"];
@@ -23,8 +24,8 @@ export function detectMissedRevenueOpportunity(call: CallWithRelations): MissedR
     INTENT_KEYWORDS.some((kw) => (b.evidence ?? "").toLowerCase().includes(kw) || (b.type ?? "").toLowerCase().includes(kw))
   );
 
-  const closingSection = a.criterion_scores.find((cs) => cs.section_name === "Closing");
-  const weakClosing = closingSection ? (closingSection.score ?? 0) / (closingSection.max_score || 1) < 0.55 : true;
+  const closingSection = getSectionScore(a.criterion_scores, "Closing");
+  const weakClosing = closingSection ? closingSection.pct < 55 : true;
 
   const closingMissedOpportunity = a.missed_opportunities.find((m) => m.category === "closing");
 

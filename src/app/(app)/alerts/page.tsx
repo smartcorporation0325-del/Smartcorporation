@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getCalls } from "@/lib/data/calls";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatDate } from "@/lib/utils";
+import { formatDate, getSectionScore } from "@/lib/utils";
 import type { CallWithRelations } from "@/types/db";
 
 interface DerivedAlert {
@@ -30,13 +30,8 @@ function deriveAlerts(calls: CallWithRelations[]): DerivedAlert[] {
         call: c,
       });
     }
-    const closingSection = a.criterion_scores.find((cs) => cs.section_name === "Closing");
-    if (
-      a.buying_signals.length > 0 &&
-      closingSection &&
-      (closingSection.max_score ?? 0) > 0 &&
-      (closingSection.score ?? 0) / (closingSection.max_score ?? 1) < 0.5
-    ) {
+    const closingSection = getSectionScore(a.criterion_scores, "Closing");
+    if (a.buying_signals.length > 0 && closingSection && closingSection.maxScore > 0 && closingSection.pct < 50) {
       alerts.push({
         ruleKey: "CLOSING_OPPORTUNITY_MISSED",
         title: `Closing opportunity missed — ${name}`,

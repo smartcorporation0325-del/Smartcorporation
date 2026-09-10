@@ -1,4 +1,5 @@
 import { getCalls } from "./calls";
+import { getSectionScore } from "@/lib/utils";
 import type { CallWithRelations } from "@/types/db";
 
 // Very small keyword-based retrieval layer (Section 17): pulls a bounded, relevant
@@ -21,8 +22,8 @@ export async function retrieveRelevantCalls(question: string, limit = 12): Promi
       if (q.includes("price") && a.objections.some((o) => o.objection_type === "price")) score += 3;
       if (q.includes("partner") && a.objections.some((o) => o.objection_type?.includes("partner"))) score += 3;
       if (q.includes("closing") || q.includes("close")) {
-        const closingSection = a.criterion_scores.find((cs) => cs.section_name === "Closing");
-        if (closingSection && (closingSection.score ?? 0) / (closingSection.max_score || 1) < 0.6) score += 2;
+        const closingSection = getSectionScore(a.criterion_scores, "Closing");
+        if (closingSection && closingSection.pct < 60) score += 2;
       }
       if (q.includes("objection")) score += a.objections.length;
       if (q.includes("coach")) score += 1;
@@ -48,7 +49,7 @@ export function summarizeCallsForPrompt(calls: CallWithRelations[]): string {
       const a = c.analysis!;
       return [
         `Call ${c.id} — ${c.contact?.firstname} ${c.contact?.lastname} — ${c.started_at?.slice(0, 10)}`,
-        `  Rep: ${c.sales_rep?.name ?? "Federico"} | Deal: ${c.deal?.deal_name ?? "N/A"} (${c.deal?.status ?? "open"}, $${c.deal?.amount ?? "?"})`,
+        `  Rep: ${c.sales_rep?.name ?? "Unknown rep"} | Deal: ${c.deal?.deal_name ?? "N/A"} (${c.deal?.status ?? "open"}, $${c.deal?.amount ?? "?"})`,
         `  Score: ${a.overall_score}/100 | Outcome: ${a.call_outcome} | AI close likelihood: ${a.close_probability}%`,
         `  Objections: ${a.objections.map((o) => `${o.objection_type}${o.handled ? " (handled)" : " (unresolved)"}`).join(", ") || "none"}`,
         `  Buying signals: ${a.buying_signals.map((b) => b.type).join(", ") || "none"}`,

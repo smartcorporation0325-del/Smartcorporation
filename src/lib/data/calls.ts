@@ -1,6 +1,7 @@
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getAllCalls, getManualCallById } from "@/lib/data/manual-store";
+import { getSectionScore } from "@/lib/utils";
 import type { CallAnalysisFull, CallWithRelations } from "@/types/db";
 
 const CALL_SELECT = `
@@ -82,12 +83,8 @@ export function callNeedsAttention(c: CallWithRelations): boolean {
   if (!a) return false;
   const hasOpenNextAction = a.next_actions.some((n) => !n.completed);
   const hotNoNextStep = (a.close_probability ?? 0) >= 75 && !hasOpenNextAction && c.deal?.status === "open";
-  const closingSection = a.criterion_scores.find((cs) => cs.section_name === "Closing");
-  const noClosingAttempt =
-    a.buying_signals.length > 0 &&
-    closingSection != null &&
-    (closingSection.max_score ?? 0) > 0 &&
-    (closingSection.score ?? 0) / (closingSection.max_score ?? 1) < 0.5;
+  const closingSection = getSectionScore(a.criterion_scores, "Closing");
+  const noClosingAttempt = a.buying_signals.length > 0 && closingSection != null && closingSection.maxScore > 0 && closingSection.pct < 50;
   const strongPriceObjection = a.objections.some((o) => o.objection_type === "price" && o.severity === "high" && !o.handled);
   const highValueLowScore = (c.deal?.amount ?? 0) >= 6000 && (a.overall_score ?? 100) < 60;
   const followUpOverdue =

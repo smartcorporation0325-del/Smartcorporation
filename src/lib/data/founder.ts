@@ -65,7 +65,7 @@ export async function getFounderSnapshot(): Promise<FounderSnapshot> {
       ? `${titleCase(topObjection[0])} continues to be the most frequent objection (${topObjection[1]} call${topObjection[1] === 1 ? "" : "s"}).`
       : "No recurring objection pattern identified yet.",
     coachingFocus: topWeakness
-      ? `Federico needs to improve ${topWeakness[0].toLowerCase()} — it scored below target on ${topWeakness[1]} call${topWeakness[1] === 1 ? "" : "s"}.`
+      ? `The team needs to improve ${topWeakness[0].toLowerCase()} — it scored below target on ${topWeakness[1]} call${topWeakness[1] === 1 ? "" : "s"}.`
       : "No consistent coaching gap identified yet — performance is even across sections.",
   };
 }
