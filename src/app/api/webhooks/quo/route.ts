@@ -4,6 +4,7 @@ import { ingestQuoCall } from "@/lib/sync/quo-sync";
 import { writeSyncLog } from "@/lib/data/sync-logs";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
+import { resolveRepIdForQuoUser } from "@/lib/data/sales-reps";
 
 // Quo (formerly OpenPhone) webhook receiver (Section 20). Verifies the signature,
 // handles duplicate deliveries idempotently (see ingestQuoCall's quo_call_id check),
@@ -52,9 +53,8 @@ export async function POST(req: NextRequest) {
 
   const admin = getSupabaseAdminClient();
   const repIdForQuoUser = async (quoUserId: string | null): Promise<string | null> => {
-    if (!quoUserId || !admin) return null;
-    const { data } = await admin.from("sales_reps").select("id").eq("quo_user_id", quoUserId).maybeSingle();
-    return data?.id ?? null;
+    if (!admin) return null;
+    return resolveRepIdForQuoUser(admin, quoUserId);
   };
 
   const result = await ingestQuoCall(fetched.call, fetched.transcript, repIdForQuoUser);

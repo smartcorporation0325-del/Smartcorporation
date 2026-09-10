@@ -114,7 +114,7 @@ export default async function CallsPage({
                       {c.contact?.firstname} {c.contact?.lastname}
                     </Link>
                   </td>
-                  <td className="px-4 py-3">{c.sales_rep?.name ?? "Federico"}</td>
+                  <td className="px-4 py-3">{c.sales_rep?.name ?? "Unassigned"}</td>
                   <td className="px-4 py-3">{formatDuration(c.duration_seconds)}</td>
                   <td className="px-4 py-3">{c.deal?.deal_name ?? "—"}</td>
                   <td className="px-4 py-3">{c.deal?.stage ?? "—"}</td>

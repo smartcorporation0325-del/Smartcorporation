@@ -2,6 +2,7 @@ import { getQuoService, isQuoConfigured } from "@/services/quo";
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { findOrCreateLocalContact, getPrimaryDealIdForContact, refreshStoredDealLabels } from "@/lib/matching/associate";
+import { resolveRepIdForQuoUser } from "@/lib/data/sales-reps";
 import { rerunAnalysisForCall } from "@/lib/pipeline/analyze";
 import { writeSyncLog } from "@/lib/data/sync-logs";
 import type { QuoCallDetail, QuoTranscript } from "@/services/quo/types";
@@ -246,15 +247,45 @@ export async function backfillCallAssociations(
   callsUnlinked: number;
   contactsRemoved: number;
   dealsRelabeled: number;
+  repsAssigned: number;
   errors: string[];
 }> {
-  const empty = { updated: 0, stillUnresolved: 0, remaining: 0, callsUnlinked: 0, contactsRemoved: 0, dealsRelabeled: 0, errors: [] as string[] };
+  const empty = {
+    updated: 0,
+    stillUnresolved: 0,
+    remaining: 0,
+    callsUnlinked: 0,
+    contactsRemoved: 0,
+    dealsRelabeled: 0,
+    repsAssigned: 0,
+    errors: [] as string[],
+  };
   if (!isSupabaseConfigured()) return empty;
   const admin = getSupabaseAdminClient();
   if (!admin) return empty;
 
   const { callsUnlinked, contactsRemoved } = await cleanupInboxNumberContacts(admin);
   const { updated: dealsRelabeled, errors: dealLabelErrors } = await refreshStoredDealLabels();
+
+  // sales_reps.quo_user_id was never populated, so every Quo-synced call's
+  // sales_rep_id came back null — resolveRepIdForQuoUser's single-active-rep fallback
+  // fixes new calls going forward, but existing rows need a one-time assignment. No
+  // Quo lookup needed: the fallback doesn't depend on the call's actual quo user id.
+  let repsAssigned = 0;
+  const fallbackRepId = await resolveRepIdForQuoUser(admin, null);
+  if (fallbackRepId) {
+    const { data: unassignedCalls } = await admin.from("calls").select("id").is("sales_rep_id", null);
+    if (unassignedCalls?.length) {
+      await admin
+        .from("calls")
+        .update({ sales_rep_id: fallbackRepId })
+        .in(
+          "id",
+          unassignedCalls.map((c) => c.id)
+        );
+      repsAssigned = unassignedCalls.length;
+    }
+  }
 
   const { data: candidates } = await admin
     .from("calls")
@@ -318,6 +349,7 @@ export async function backfillCallAssociations(
     callsUnlinked,
     contactsRemoved,
     dealsRelabeled,
+    repsAssigned,
     errors: [...dealLabelErrors, ...errors],
   };
 }
@@ -361,9 +393,8 @@ export async function syncRecentQuoCalls(
     const admin = isSupabaseConfigured() ? getSupabaseAdminClient() : null;
 
     const repIdForQuoUser = async (quoUserId: string | null): Promise<string | null> => {
-      if (!quoUserId || !admin) return null;
-      const { data } = await admin.from("sales_reps").select("id").eq("quo_user_id", quoUserId).maybeSingle();
-      return data?.id ?? null;
+      if (!admin) return null;
+      return resolveRepIdForQuoUser(admin, quoUserId);
     };
 
     const { createdAfter, createdBefore } = window;

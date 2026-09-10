@@ -41,7 +41,7 @@ export default async function CallDetailPage({ params }: { params: Promise<{ id:
               <DemoDataTag />
             </div>
             <p className="text-sm text-muted">
-              {call.sales_rep?.name ?? "Federico"} • {formatDate(call.started_at)} • {formatDuration(call.duration_seconds)} •{" "}
+              {call.sales_rep?.name ?? "Unassigned"} • {formatDate(call.started_at)} • {formatDuration(call.duration_seconds)} •{" "}
               {call.call_type}
             </p>
           </div>
