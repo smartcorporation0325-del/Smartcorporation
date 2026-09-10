@@ -15,6 +15,7 @@ export interface HubSpotDeal {
   amount: number | null;
   ownerId: string | null;
   closeDate: string | null;
+  createdAt: string | null;
   status: "open" | "closed_won" | "closed_lost";
   leadSource: string | null;
 }

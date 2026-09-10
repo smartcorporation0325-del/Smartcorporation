@@ -22,6 +22,7 @@ const DEAL_PROPERTIES = [
   "amount",
   "hubspot_owner_id",
   "closedate",
+  "createdate",
   "dealstatus",
   "hs_analytics_source",
 ];
@@ -35,6 +36,13 @@ export interface HubSpotService {
   searchContactByPhone(phone: string): Promise<HubSpotContact | null>;
   getDealsForContact(contactId: string): Promise<HubSpotDeal[]>;
   getDealById(dealId: string): Promise<HubSpotDeal | null>;
+  /**
+   * Lists deals directly by created-date window, independent of whether any of them
+   * are tied to a call we've recorded (Section: Pipeline view). Deliberately separate
+   * from getDealsForContact's call-anchored path — this exists so the full HubSpot
+   * pipeline is browsable even for deals with no matching call/contact locally.
+   */
+  listDeals(params: { createdAfter?: string; createdBefore?: string; limit?: number }): Promise<{ deals: HubSpotDeal[]; total: number }>;
   getOwner(ownerId: string): Promise<HubSpotOwner | null>;
   getUpcomingTasksForContact(contactId: string): Promise<HubSpotTask[]>;
   testConnection(): Promise<{ ok: boolean; detail: string }>;
@@ -189,6 +197,7 @@ class LiveHubSpotService implements HubSpotService {
       amount: deal.properties.amount ? Number(deal.properties.amount) : null,
       ownerId: deal.properties.hubspot_owner_id ?? null,
       closeDate: deal.properties.closedate ?? null,
+      createdAt: deal.properties.createdate ?? null,
       status: mapDealStatus(stageInfo),
       leadSource: deal.properties.hs_analytics_source ?? null,
     };
@@ -221,6 +230,26 @@ class LiveHubSpotService implements HubSpotService {
     );
     if (!deal) return null;
     return this.mapDealResponse(deal, pipelines);
+  }
+
+  async listDeals(params: { createdAfter?: string; createdBefore?: string; limit?: number }): Promise<{ deals: HubSpotDeal[]; total: number }> {
+    const filters: Array<{ propertyName: string; operator: string; value: string }> = [];
+    if (params.createdAfter) filters.push({ propertyName: "createdate", operator: "GTE", value: String(new Date(params.createdAfter).getTime()) });
+    if (params.createdBefore) filters.push({ propertyName: "createdate", operator: "LTE", value: String(new Date(params.createdBefore).getTime()) });
+
+    const body = {
+      filterGroups: filters.length ? [{ filters }] : [],
+      properties: DEAL_PROPERTIES,
+      sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
+      limit: Math.min(params.limit ?? 100, 100),
+    };
+    const data = await this.request<{ total: number; results: Array<{ id: string; properties: Record<string, string | null> }> }>(
+      "/crm/v3/objects/deals/search",
+      { method: "POST", body: JSON.stringify(body) }
+    );
+    const pipelines = await this.loadPipelines();
+    const deals = await Promise.all(data.results.map((deal) => this.mapDealResponse(deal, pipelines)));
+    return { deals, total: data.total };
   }
 
   async getOwner(ownerId: string): Promise<HubSpotOwner | null> {
@@ -312,6 +341,9 @@ class DemoHubSpotService implements HubSpotService {
   }
   async getDealById(): Promise<HubSpotDeal | null> {
     return null;
+  }
+  async listDeals(): Promise<{ deals: HubSpotDeal[]; total: number }> {
+    return { deals: [], total: 0 };
   }
   async getOwner(): Promise<HubSpotOwner | null> {
     return null;

@@ -11,12 +11,14 @@ import {
   MessageCircleQuestion,
   BellRing,
   Settings,
+  Handshake,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/calls", label: "Calls", icon: Phone },
+  { href: "/deals", label: "Deals", icon: Handshake },
   { href: "/coaching", label: "Coaching", icon: GraduationCap },
   { href: "/objections", label: "Objections", icon: ShieldAlert },
   { href: "/intelligence", label: "Intelligence", icon: LineChart },
