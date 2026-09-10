@@ -324,3 +324,46 @@ export async function manuallyAssociateCall(callId: string, input: MatchInput): 
     detail: `Linked to ${match.hubspotContact.firstname ?? ""} ${match.hubspotContact.lastname ?? ""} (matched by ${match.matchedBy})${match.hubspotDeals.length ? ` with ${match.hubspotDeals.length} deal(s).` : "."}`,
   };
 }
+
+/**
+ * One-time refresh for deal rows stored before getDealsForContact learned to resolve
+ * dealstage/pipeline (enumeration properties) to their human labels instead of
+ * HubSpot's raw internal option id — confirmed in production: a deal showed Stage
+ * "951755830" instead of "Deposit Recieved". Re-fetches every deal we have a
+ * hubspot_deal_id for and overwrites stage/pipeline/status with the freshly resolved
+ * values. Time-boxed like the call backfill; safe to call repeatedly.
+ */
+export async function refreshStoredDealLabels(timeBudgetMs = 60_000): Promise<{ updated: number; errors: string[] }> {
+  if (!isSupabaseConfigured() || !isHubSpotConfigured()) return { updated: 0, errors: [] };
+  const admin = getSupabaseAdminClient();
+  if (!admin) return { updated: 0, errors: [] };
+  const hubspot = getHubSpotService();
+
+  const { data: deals } = await admin.from("deals").select("id, hubspot_deal_id").not("hubspot_deal_id", "is", null);
+
+  const errors: string[] = [];
+  let updated = 0;
+  const startedAt = Date.now();
+  for (const deal of deals ?? []) {
+    if (Date.now() - startedAt > timeBudgetMs) break;
+    try {
+      const fresh = await hubspot.getDealById(deal.hubspot_deal_id as string);
+      if (!fresh) continue;
+      await admin
+        .from("deals")
+        .update({
+          deal_name: fresh.dealName,
+          stage: fresh.stage,
+          pipeline: fresh.pipeline,
+          amount: fresh.amount,
+          status: fresh.status,
+          close_date: fresh.closeDate,
+        })
+        .eq("id", deal.id);
+      updated++;
+    } catch (err) {
+      errors.push(`${deal.id}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  return { updated, errors };
+}

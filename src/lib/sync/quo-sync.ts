@@ -1,7 +1,7 @@
 import { getQuoService, isQuoConfigured } from "@/services/quo";
 import { getSupabaseAdminClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { findOrCreateLocalContact, getPrimaryDealIdForContact } from "@/lib/matching/associate";
+import { findOrCreateLocalContact, getPrimaryDealIdForContact, refreshStoredDealLabels } from "@/lib/matching/associate";
 import { rerunAnalysisForCall } from "@/lib/pipeline/analyze";
 import { writeSyncLog } from "@/lib/data/sync-logs";
 import type { QuoCallDetail, QuoTranscript } from "@/services/quo/types";
@@ -239,12 +239,22 @@ async function cleanupInboxNumberContacts(
  */
 export async function backfillCallAssociations(
   timeBudgetMs = 200_000
-): Promise<{ updated: number; stillUnresolved: number; remaining: number; callsUnlinked: number; contactsRemoved: number; errors: string[] }> {
-  if (!isSupabaseConfigured()) return { updated: 0, stillUnresolved: 0, remaining: 0, callsUnlinked: 0, contactsRemoved: 0, errors: [] };
+): Promise<{
+  updated: number;
+  stillUnresolved: number;
+  remaining: number;
+  callsUnlinked: number;
+  contactsRemoved: number;
+  dealsRelabeled: number;
+  errors: string[];
+}> {
+  const empty = { updated: 0, stillUnresolved: 0, remaining: 0, callsUnlinked: 0, contactsRemoved: 0, dealsRelabeled: 0, errors: [] as string[] };
+  if (!isSupabaseConfigured()) return empty;
   const admin = getSupabaseAdminClient();
-  if (!admin) return { updated: 0, stillUnresolved: 0, remaining: 0, callsUnlinked: 0, contactsRemoved: 0, errors: [] };
+  if (!admin) return empty;
 
   const { callsUnlinked, contactsRemoved } = await cleanupInboxNumberContacts(admin);
+  const { updated: dealsRelabeled, errors: dealLabelErrors } = await refreshStoredDealLabels();
 
   const { data: candidates } = await admin
     .from("calls")
@@ -301,7 +311,15 @@ export async function backfillCallAssociations(
   }
 
   const processed = updated + stillUnresolved + errors.length;
-  return { updated, stillUnresolved, remaining: queue.length - processed, callsUnlinked, contactsRemoved, errors };
+  return {
+    updated,
+    stillUnresolved,
+    remaining: queue.length - processed,
+    callsUnlinked,
+    contactsRemoved,
+    dealsRelabeled,
+    errors: [...dealLabelErrors, ...errors],
+  };
 }
 
 export interface SyncWindow {
