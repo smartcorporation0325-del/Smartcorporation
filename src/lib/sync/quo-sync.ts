@@ -12,6 +12,18 @@ import type { QuoCallDetail, QuoTranscript } from "@/services/quo/types";
 // ("in-progress" with a hyphen, "no-answer", "abandoned") that look like exact matches
 // but aren't — confirmed in production: "in-progress" alone violated the constraint
 // and silently aborted an otherwise-successful sync.
+// Calls this short are noise, not sales signal (dropped calls, wrong numbers, a
+// button-mash) — analyzing them wastes Claude spend and drags down Coaching/
+// Intelligence averages with scores that reflect no real conversation. Never applied
+// to a call still 'in_progress': its duration is 0 only because it hasn't ended yet,
+// not because it's actually short.
+const MIN_CALL_DURATION_SECONDS = 120;
+
+function isTooShortToRegister(status: QuoCallDetail["status"], durationSeconds: number | null): boolean {
+  if (mapQuoCallStatus(status) === "in_progress") return false;
+  return (durationSeconds ?? 0) < MIN_CALL_DURATION_SECONDS;
+}
+
 function mapQuoCallStatus(status: QuoCallDetail["status"]): "completed" | "missed" | "voicemail" | "in_progress" {
   switch (status) {
     case "missed":
@@ -33,6 +45,8 @@ export interface IngestResult {
   transcriptReady: boolean;
   /** True when a transcript is now ready but analysis was deliberately deferred (see skipAnalysis). */
   needsAnalysis: boolean;
+  /** True when this call was deliberately not (or no longer) stored: under MIN_CALL_DURATION_SECONDS. */
+  skippedShort?: boolean;
   error?: string;
 }
 
@@ -72,6 +86,15 @@ export async function ingestQuoCall(
     .maybeSingle();
 
   if (existing) {
+    // A call first seen while still in_progress is stored anyway (its final duration
+    // isn't known yet) — if it turns out to have ended under MIN_CALL_DURATION_SECONDS,
+    // remove it now that we know, so a short call never lingers just because we caught
+    // it mid-ring. Cascades to its transcript/analysis rows (schema: on delete cascade).
+    if (isTooShortToRegister(call.status, call.durationSeconds)) {
+      await admin.from("calls").delete().eq("id", existing.id);
+      return { callId: null, created: false, transcriptReady: false, needsAnalysis: false, skippedShort: true };
+    }
+
     // A call first seen while still ringing/in-progress got its duration_seconds=0 and
     // status='in_progress' frozen in at insert time — nothing ever revisited those
     // fields afterward, only transcript/analysis status. Confirmed in production: a
@@ -99,6 +122,10 @@ export async function ingestQuoCall(
       return { callId: existing.id, created: false, transcriptReady: true, needsAnalysis: skipAnalysis };
     }
     return { callId: existing.id, created: false, transcriptReady: transcript?.status === "ready", needsAnalysis: false };
+  }
+
+  if (isTooShortToRegister(call.status, call.durationSeconds)) {
+    return { callId: null, created: false, transcriptReady: false, needsAnalysis: false, skippedShort: true };
   }
 
   const localContact = call.participantPhoneNumber
@@ -222,6 +249,28 @@ async function cleanupInboxNumberContacts(
 }
 
 /**
+ * One-time cleanup for calls ingested before ingestQuoCall started rejecting calls
+ * under MIN_CALL_DURATION_SECONDS: removes any already-stored call that's not
+ * in_progress and ran under that threshold. Cascades to its transcript/analysis rows.
+ */
+async function cleanupShortCalls(admin: NonNullable<ReturnType<typeof getSupabaseAdminClient>>): Promise<number> {
+  const { data: shortCalls } = await admin
+    .from("calls")
+    .select("id")
+    .neq("status", "in_progress")
+    .or(`duration_seconds.is.null,duration_seconds.lt.${MIN_CALL_DURATION_SECONDS}`);
+  if (!shortCalls?.length) return 0;
+  await admin
+    .from("calls")
+    .delete()
+    .in(
+      "id",
+      shortCalls.map((c) => c.id)
+    );
+  return shortCalls.length;
+}
+
+/**
  * One-time backfill for calls ingested before findOrCreateLocalContact learned to
  * (a) retry a stale HubSpot-less local contact instead of caching it blank forever,
  * and (b) resolve a deal_id at all. Those calls already exist with contact_id and/or
@@ -248,6 +297,7 @@ export async function backfillCallAssociations(
   contactsRemoved: number;
   dealsRelabeled: number;
   repsAssigned: number;
+  shortCallsRemoved: number;
   errors: string[];
 }> {
   const empty = {
@@ -258,6 +308,7 @@ export async function backfillCallAssociations(
     contactsRemoved: 0,
     dealsRelabeled: 0,
     repsAssigned: 0,
+    shortCallsRemoved: 0,
     errors: [] as string[],
   };
   if (!isSupabaseConfigured()) return empty;
@@ -266,6 +317,7 @@ export async function backfillCallAssociations(
 
   const { callsUnlinked, contactsRemoved } = await cleanupInboxNumberContacts(admin);
   const { updated: dealsRelabeled, errors: dealLabelErrors } = await refreshStoredDealLabels();
+  const shortCallsRemoved = await cleanupShortCalls(admin);
 
   // sales_reps.quo_user_id was never populated, so every Quo-synced call's
   // sales_rep_id came back null — resolveRepIdForQuoUser's single-active-rep fallback
@@ -350,6 +402,7 @@ export async function backfillCallAssociations(
     contactsRemoved,
     dealsRelabeled,
     repsAssigned,
+    shortCallsRemoved,
     errors: [...dealLabelErrors, ...errors],
   };
 }
@@ -367,17 +420,18 @@ export interface SyncWindow {
  */
 export async function syncRecentQuoCalls(
   window: SyncWindow = { createdAfter: new Date(Date.now() - 24 * 3600 * 1000).toISOString() }
-): Promise<{ inspected: number; ingested: number; analyzed: number; pendingAnalysis: number; errors: string[] }> {
+): Promise<{ inspected: number; ingested: number; skippedShort: number; analyzed: number; pendingAnalysis: number; errors: string[] }> {
   if (!isQuoConfigured()) {
     const message = "QUO_API_KEY is not configured — nothing to sync. Demo data is already loaded.";
     await writeSyncLog({ provider: "quo", action: "sync_now", status: "error", errorMessage: message });
-    return { inspected: 0, ingested: 0, analyzed: 0, pendingAnalysis: 0, errors: [message] };
+    return { inspected: 0, ingested: 0, skippedShort: 0, analyzed: 0, pendingAnalysis: 0, errors: [message] };
   }
 
   const quo = getQuoService();
   const errors: string[] = [];
   let inspected = 0;
   let ingested = 0;
+  let skippedShort = 0;
 
   // Vercel kills this whole request at 300s. A wide window (e.g. 14 days) can involve
   // dozens of sequential Quo API calls just to ingest — confirmed in production, that
@@ -429,6 +483,7 @@ export async function syncRecentQuoCalls(
         try {
           const result = await ingestQuoCall(call, transcript, repIdForQuoUser, { skipAnalysis: true });
           if (result.error) errors.push(result.error);
+          else if (result.skippedShort) skippedShort++;
           else if (result.created) ingested++;
         } catch (err) {
           errors.push(`${call.id}: ${err instanceof Error ? err.message : String(err)}`);
@@ -453,14 +508,14 @@ export async function syncRecentQuoCalls(
       provider: "quo",
       action: "sync_now",
       status: errors.length ? "error" : "success",
-      payloadReference: `inspected=${inspected} ingested=${ingested} analyzed=${analyzed} pending=${remaining}`,
+      payloadReference: `inspected=${inspected} ingested=${ingested} skippedShort=${skippedShort} analyzed=${analyzed} pending=${remaining}`,
       errorMessage: errors[0] ?? null,
     });
 
-    return { inspected, ingested, analyzed, pendingAnalysis: remaining, errors };
+    return { inspected, ingested, skippedShort, analyzed, pendingAnalysis: remaining, errors };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await writeSyncLog({ provider: "quo", action: "sync_now", status: "error", errorMessage: message });
-    return { inspected, ingested, analyzed: 0, pendingAnalysis: 0, errors: [message] };
+    return { inspected, ingested, skippedShort, analyzed: 0, pendingAnalysis: 0, errors: [message] };
   }
 }

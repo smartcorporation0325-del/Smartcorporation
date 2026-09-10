@@ -42,8 +42,9 @@ export function IntegrationActions({ provider }: { provider: "quo" | "hubspot" |
     startTransition(async () => {
       const result = await syncQuoNowAction(range, range === "custom" ? customDate : undefined);
       const base = `Inspected ${result.inspected} call(s), ingested ${result.ingested} new, analyzed ${result.analyzed}.`;
+      const skipped = result.skippedShort > 0 ? ` Skipped ${result.skippedShort} call(s) under 2 minutes.` : "";
       const pending = result.pendingAnalysis > 0 ? ` ${result.pendingAnalysis} still need analysis — click Sync now again to continue.` : "";
-      setMessage(result.errors.length ? `Sync failed: ${result.errors[0]}` : base + pending);
+      setMessage(result.errors.length ? `Sync failed: ${result.errors[0]}` : base + skipped + pending);
     });
   }
 
@@ -54,9 +55,10 @@ export function IntegrationActions({ provider }: { provider: "quo" | "hubspot" |
       const cleanup = result.callsUnlinked > 0 ? `Unlinked ${result.callsUnlinked} call(s) wrongly matched to your own inbox number (removed ${result.contactsRemoved} bogus contact(s)). ` : "";
       const relabel = result.dealsRelabeled > 0 ? `Re-labeled ${result.dealsRelabeled} deal(s) with the correct pipeline/stage name. ` : "";
       const reps = result.repsAssigned > 0 ? `Assigned a sales rep to ${result.repsAssigned} call(s) that had none. ` : "";
+      const shortCalls = result.shortCallsRemoved > 0 ? `Removed ${result.shortCallsRemoved} call(s) under 2 minutes. ` : "";
       const base = `Filled in contact/deal on ${result.updated} call(s), ${result.stillUnresolved} still unresolved (no match found).`;
       const remaining = result.remaining > 0 ? ` ${result.remaining} more queued — click again to continue.` : "";
-      setMessage(result.errors.length ? `Backfill failed: ${result.errors[0]}` : cleanup + relabel + reps + base + remaining);
+      setMessage(result.errors.length ? `Backfill failed: ${result.errors[0]}` : cleanup + relabel + reps + shortCalls + base + remaining);
     });
   }
 
