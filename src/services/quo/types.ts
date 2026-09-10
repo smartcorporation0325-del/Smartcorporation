@@ -33,6 +33,7 @@ export interface QuoUser {
 export interface QuoCallSummary {
   id: string; // activity id, "AC..."
   conversationId: string | null; // "CN..."
+  inboxId: string; // "PN..." — distinct from inboxPhoneNumber, needed to build a my.quo.com link
   inboxPhoneNumber: string;
   participantPhoneNumber: string | null;
   userId: string | null; // Quo user who handled the call, if any (null if AI-handled)

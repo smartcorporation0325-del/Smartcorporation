@@ -17,11 +17,18 @@ export function hubspotDealUrl(hubspotDealId: string): string {
   return `https://app.hubspot.com/contacts/${portalId()}/record/0-3/${hubspotDealId}`;
 }
 
-// Quo (formerly OpenPhone) has no documented deep-link URL for a specific contact's
-// record page (direct doc fetches to quo.com/openphone.com are blocked from this
-// environment, so the exact scheme couldn't be confirmed) — a tel: link is the one
-// interaction guaranteed to work everywhere: it opens the number in a calling app,
-// which on a machine with Quo set up is exactly how you'd "go to" that contact.
+// Confirmed directly from a real my.quo.com URL (quo.com/openphone.com's own docs
+// are blocked from this environment, so this couldn't be verified any other way):
+// https://my.quo.com/inbox/{inboxId}/c/{conversationId} opens that exact conversation
+// thread. Both ids are only known for a call reached via the conversation-discovery
+// sync path (see services/quo/index.ts) — a call ingested via a direct per-call fetch
+// (webhook, backfill) has neither until a later bulk sync fills them in.
+export function quoConversationUrl(inboxId: string, conversationId: string): string {
+  return `https://my.quo.com/inbox/${inboxId}/c/${conversationId}`;
+}
+
+// Fallback for a call whose conversation id isn't known yet: a tel: link opens the
+// number in a calling app, which is at least a way to reach the same contact.
 export function quoTelUrl(phone: string): string {
   return `tel:${phone.replace(/[^\d+]/g, "")}`;
 }

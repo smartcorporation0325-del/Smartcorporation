@@ -81,7 +81,7 @@ export async function ingestQuoCall(
 
   const { data: existing } = await admin
     .from("calls")
-    .select("id, analysis_status, transcript_status, duration_seconds, status")
+    .select("id, analysis_status, transcript_status, duration_seconds, status, quo_conversation_id")
     .eq("quo_call_id", call.id)
     .maybeSingle();
 
@@ -103,6 +103,12 @@ export async function ingestQuoCall(
     const freshStatus = mapQuoCallStatus(call.status);
     if (existing.duration_seconds !== call.durationSeconds || existing.status !== freshStatus) {
       await admin.from("calls").update({ duration_seconds: call.durationSeconds, status: freshStatus }).eq("id", existing.id);
+    }
+    // conversationId is only known via the conversation-discovery sync path, never
+    // via a direct per-call fetch (webhook, backfill) — fill it in opportunistically
+    // whenever a sync happens to know it, but never overwrite a known value with null.
+    if (call.conversationId && !existing.quo_conversation_id) {
+      await admin.from("calls").update({ quo_inbox_id: call.inboxId, quo_conversation_id: call.conversationId }).eq("id", existing.id);
     }
 
     // Idempotent: only act if the transcript just became ready and analysis hasn't run yet.
@@ -137,6 +143,8 @@ export async function ingestQuoCall(
     .from("calls")
     .insert({
       quo_call_id: call.id,
+      quo_inbox_id: call.inboxId,
+      quo_conversation_id: call.conversationId,
       contact_id: localContact?.contactId ?? null,
       deal_id: localContact?.dealId ?? null,
       sales_rep_id: salesRepId,

@@ -107,6 +107,8 @@ async function runManualPipelineDemo(
   const call: CallWithRelations = {
     id: callId,
     quo_call_id: null,
+    quo_inbox_id: null,
+    quo_conversation_id: null,
     contact_id: contactId,
     deal_id: dealId,
     sales_rep_id: "demo-rep-federico",

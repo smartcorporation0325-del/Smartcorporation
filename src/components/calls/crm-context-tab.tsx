@@ -3,7 +3,7 @@ import { formatCurrency, formatDate, titleCase } from "@/lib/utils";
 import { AssociateContact } from "@/components/calls/associate-contact";
 import { ApprovePushHubSpot } from "@/components/calls/approve-push-hubspot";
 import { buildPushPreview } from "@/lib/pipeline/push-to-hubspot";
-import { hubspotContactUrl, hubspotDealUrl, quoTelUrl } from "@/lib/hubspot-links";
+import { hubspotContactUrl, hubspotDealUrl, quoConversationUrl, quoTelUrl } from "@/lib/hubspot-links";
 import type { CallWithRelations } from "@/types/db";
 
 function ExternalLink({ href, label }: { href: string; label: string }) {
@@ -16,6 +16,12 @@ function ExternalLink({ href, label }: { href: string; label: string }) {
 
 export function CrmContextTab({ call }: { call: CallWithRelations }) {
   const contactName = `${call.contact?.firstname ?? ""} ${call.contact?.lastname ?? ""}`.trim() || "—";
+  const quoLink =
+    call.quo_inbox_id && call.quo_conversation_id
+      ? { href: quoConversationUrl(call.quo_inbox_id, call.quo_conversation_id), label: "Open in Quo" }
+      : call.contact?.phone
+        ? { href: quoTelUrl(call.contact.phone), label: "Call via Quo" }
+        : null;
 
   return (
     <div className="space-y-4">
@@ -38,9 +44,9 @@ export function CrmContextTab({ call }: { call: CallWithRelations }) {
           <div>
             <dt className="text-xs uppercase tracking-wide text-muted">Phone</dt>
             <dd className="mt-0.5 font-medium">{call.contact?.phone ?? "—"}</dd>
-            {call.contact?.phone && (
+            {quoLink && (
               <div className="mt-1">
-                <ExternalLink href={quoTelUrl(call.contact.phone)} label="Call via Quo" />
+                <ExternalLink href={quoLink.href} label={quoLink.label} />
               </div>
             )}
           </div>
@@ -77,8 +83,8 @@ export function CrmContextTab({ call }: { call: CallWithRelations }) {
         <p className="mt-4 text-xs text-muted">
           Only fields relevant to scoring this call are sent to Claude — unrelated CRM notes and custom
           properties are intentionally excluded (see Settings &gt; Integrations for the HubSpot connection).
-          Quo has no public deep link to a contact&apos;s record page, so &ldquo;Call via Quo&rdquo; opens the
-          number in your default calling app instead.
+          &ldquo;Open in Quo&rdquo; jumps straight to this call&apos;s conversation thread when we know it;
+          otherwise &ldquo;Call via Quo&rdquo; opens the number in your default calling app instead.
         </p>
       </Card>
       <AssociateContact callId={call.id} hasContact={Boolean(call.contact?.hubspot_contact_id)} />

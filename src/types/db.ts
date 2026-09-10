@@ -50,6 +50,8 @@ export interface Deal {
 export interface Call {
   id: string;
   quo_call_id: string | null;
+  quo_inbox_id: string | null;
+  quo_conversation_id: string | null;
   contact_id: string | null;
   deal_id: string | null;
   sales_rep_id: string | null;

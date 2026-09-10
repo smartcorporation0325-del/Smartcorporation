@@ -1171,6 +1171,8 @@ export const DEMO_CALLS: CallWithRelations[] = scenarios.map((s, i) => {
   return {
     id: `demo-call-${s.key}`,
     quo_call_id: `demo-quo-${s.key}`,
+    quo_inbox_id: null,
+    quo_conversation_id: null,
     contact_id: `demo-contact-${s.key}`,
     deal_id: `demo-deal-${s.key}`,
     sales_rep_id: FEDERICO.id,

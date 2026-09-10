@@ -206,7 +206,7 @@ class LiveQuoService implements QuoService {
     };
   }
 
-  private toCallDetail(inboxPhoneNumber: string, raw: RawCall): QuoCallDetail {
+  private toCallDetail(inboxPhoneNumber: string, inboxId: string, raw: RawCall, conversationId: string | null = null): QuoCallDetail {
     const direction: QuoCallDetail["direction"] = raw.direction === "incoming" ? "inbound" : "outbound";
     const status: QuoCallDetail["status"] =
       raw.status === "missed" || raw.status === "no-answer" || raw.status === "abandoned" || raw.status === "voicemail" || raw.status === "in-progress"
@@ -222,7 +222,8 @@ class LiveQuoService implements QuoService {
     const externalParticipant = raw.participants?.find((p) => p !== inboxPhoneNumber) ?? null;
     return {
       id: raw.id,
-      conversationId: null,
+      conversationId,
+      inboxId,
       inboxPhoneNumber,
       participantPhoneNumber: externalParticipant,
       userId: raw.userId ?? null,
@@ -256,7 +257,7 @@ class LiveQuoService implements QuoService {
       );
       const items = await Promise.all(
         page.data.map(async (raw) => {
-          const call = this.toCallDetail(params.inboxPhoneNumber, raw);
+          const call = this.toCallDetail(params.inboxPhoneNumber, inbox.id, raw);
           const transcript = params.skipTranscriptForCallIds?.has(call.id) ? null : await this.fetchTranscript(call.id);
           return { call, transcript };
         })
@@ -313,7 +314,7 @@ class LiveQuoService implements QuoService {
         for (const raw of callsPage.data) {
           if (seenCallIds.has(raw.id)) continue;
           seenCallIds.add(raw.id);
-          const call = this.toCallDetail(params.inboxPhoneNumber, raw);
+          const call = this.toCallDetail(params.inboxPhoneNumber, inbox.id, raw, convo.id);
           const transcript = params.skipTranscriptForCallIds?.has(call.id) ? null : await this.fetchTranscript(call.id);
           items.push({ call, transcript });
         }
@@ -335,7 +336,7 @@ class LiveQuoService implements QuoService {
     const inbox = inboxes.find((i) => i.id === raw.phoneNumberId);
     if (!inbox) return null;
 
-    const call = this.toCallDetail(inbox.phoneNumber, raw);
+    const call = this.toCallDetail(inbox.phoneNumber, inbox.id, raw);
     const transcript = await this.fetchTranscript(callId);
     return { call, transcript };
   }
