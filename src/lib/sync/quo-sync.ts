@@ -271,6 +271,62 @@ async function cleanupShortCalls(admin: NonNullable<ReturnType<typeof getSupabas
 }
 
 /**
+ * Re-derives sales_rep_id for every stored call from Quo's real per-call userId,
+ * correcting anything resolveRepIdForQuoUser's single-active-rep fallback blindly
+ * assigned earlier. That fallback is exactly right while exactly one rep is active —
+ * but once a second rep is added, every call previously auto-assigned that way needs
+ * re-checking, because the stored sales_rep_id was a guess, not a real match, and may
+ * actually belong to the newly-added rep. Only runs the (expensive: one Quo lookup
+ * per call) full pass when there's real ambiguity to resolve (more than one active
+ * rep); with zero or one active rep there's nothing a fresh lookup could correct that
+ * the fallback doesn't already get right.
+ */
+async function reattributeCallReps(
+  admin: NonNullable<ReturnType<typeof getSupabaseAdminClient>>,
+  timeBudgetMs: number
+): Promise<{ reattributed: number; unresolved: number; remaining: number; errors: string[] }> {
+  const empty = { reattributed: 0, unresolved: 0, remaining: 0, errors: [] as string[] };
+  if (!isQuoConfigured()) return empty;
+
+  const { data: activeReps } = await admin.from("sales_reps").select("id").eq("active", true);
+  if (!activeReps || activeReps.length <= 1) return empty;
+
+  const { data: calls } = await admin
+    .from("calls")
+    .select("id, quo_call_id, sales_rep_id")
+    .not("quo_call_id", "is", null)
+    .order("started_at", { ascending: false });
+
+  const quo = getQuoService();
+  const queue = calls ?? [];
+  const errors: string[] = [];
+  let reattributed = 0;
+  let unresolved = 0;
+  const startedAt = Date.now();
+
+  for (const row of queue) {
+    if (Date.now() - startedAt > timeBudgetMs) break;
+    try {
+      const fetched = await quo.getCallWithTranscript(row.quo_call_id as string);
+      const correctRepId = await resolveRepIdForQuoUser(admin, fetched?.call.userId ?? null);
+      if (!correctRepId) {
+        unresolved++;
+        continue;
+      }
+      if (correctRepId !== row.sales_rep_id) {
+        await admin.from("calls").update({ sales_rep_id: correctRepId }).eq("id", row.id);
+        reattributed++;
+      }
+    } catch (err) {
+      errors.push(`${row.id}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  const processed = reattributed + unresolved + errors.length;
+  return { reattributed, unresolved, remaining: queue.length - processed, errors };
+}
+
+/**
  * One-time backfill for calls ingested before findOrCreateLocalContact learned to
  * (a) retry a stale HubSpot-less local contact instead of caching it blank forever,
  * and (b) resolve a deal_id at all. Those calls already exist with contact_id and/or
@@ -298,6 +354,8 @@ export async function backfillCallAssociations(
   dealsRelabeled: number;
   repsAssigned: number;
   shortCallsRemoved: number;
+  repsReattributed: number;
+  repsReattributionRemaining: number;
   errors: string[];
 }> {
   const empty = {
@@ -309,6 +367,8 @@ export async function backfillCallAssociations(
     dealsRelabeled: 0,
     repsAssigned: 0,
     shortCallsRemoved: 0,
+    repsReattributed: 0,
+    repsReattributionRemaining: 0,
     errors: [] as string[],
   };
   if (!isSupabaseConfigured()) return empty;
@@ -318,6 +378,11 @@ export async function backfillCallAssociations(
   const { callsUnlinked, contactsRemoved } = await cleanupInboxNumberContacts(admin);
   const { updated: dealsRelabeled, errors: dealLabelErrors } = await refreshStoredDealLabels();
   const shortCallsRemoved = await cleanupShortCalls(admin);
+  const {
+    reattributed: repsReattributed,
+    remaining: repsReattributionRemaining,
+    errors: reattributionErrors,
+  } = await reattributeCallReps(admin, 60_000);
 
   // sales_reps.quo_user_id was never populated, so every Quo-synced call's
   // sales_rep_id came back null — resolveRepIdForQuoUser's single-active-rep fallback
@@ -403,7 +468,9 @@ export async function backfillCallAssociations(
     dealsRelabeled,
     repsAssigned,
     shortCallsRemoved,
-    errors: [...dealLabelErrors, ...errors],
+    repsReattributed,
+    repsReattributionRemaining,
+    errors: [...dealLabelErrors, ...reattributionErrors, ...errors],
   };
 }
 

@@ -56,9 +56,13 @@ export function IntegrationActions({ provider }: { provider: "quo" | "hubspot" |
       const relabel = result.dealsRelabeled > 0 ? `Re-labeled ${result.dealsRelabeled} deal(s) with the correct pipeline/stage name. ` : "";
       const reps = result.repsAssigned > 0 ? `Assigned a sales rep to ${result.repsAssigned} call(s) that had none. ` : "";
       const shortCalls = result.shortCallsRemoved > 0 ? `Removed ${result.shortCallsRemoved} call(s) under 2 minutes. ` : "";
+      const reattributed =
+        result.repsReattributed > 0
+          ? `Re-attributed ${result.repsReattributed} call(s) to the correct rep now that more than one is active${result.repsReattributionRemaining > 0 ? ` (${result.repsReattributionRemaining} more to re-check — click again)` : ""}. `
+          : "";
       const base = `Filled in contact/deal on ${result.updated} call(s), ${result.stillUnresolved} still unresolved (no match found).`;
       const remaining = result.remaining > 0 ? ` ${result.remaining} more queued — click again to continue.` : "";
-      setMessage(result.errors.length ? `Backfill failed: ${result.errors[0]}` : cleanup + relabel + reps + shortCalls + base + remaining);
+      setMessage(result.errors.length ? `Backfill failed: ${result.errors[0]}` : cleanup + relabel + reps + shortCalls + reattributed + base + remaining);
     });
   }
 
