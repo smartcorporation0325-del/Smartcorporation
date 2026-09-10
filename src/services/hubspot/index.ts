@@ -301,7 +301,14 @@ class LiveHubSpotService implements HubSpotService {
           hs_task_body: task.body,
           hs_task_status: "NOT_STARTED",
           hs_task_priority: priorityMap[task.priority ?? "medium"],
-          hs_timestamp: task.dueDate ? new Date(task.dueDate).getTime() : Date.now(),
+          // The prompt deliberately never invents a dueDate the client didn't actually
+          // give (services/anthropic/prompt.ts), so most next_actions have none — that's
+          // the common case, not an edge case. Falling back to Date.now() (the exact
+          // push-click instant) made the task overdue the moment any time passed at
+          // all — confirmed in production, a freshly-pushed task showed as overdue
+          // immediately. Default to 24h out instead: a real but unspecified-date
+          // follow-up, not "do this literally right now."
+          hs_timestamp: task.dueDate ? new Date(task.dueDate).getTime() : Date.now() + 24 * 3600 * 1000,
           ...(task.ownerId ? { hubspot_owner_id: task.ownerId } : {}),
         },
         associations: [
