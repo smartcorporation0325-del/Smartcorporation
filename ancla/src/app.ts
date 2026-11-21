@@ -1,9 +1,9 @@
 import { config } from "./config.ts";
-import { getOrCreateUser, runTurn, type Deps } from "./handler.ts";
-import { dueEvent, withinServiceWindow } from "./scheduler.ts";
+import { consolidate, getOrCreateUser, runTurn, type Deps } from "./handler.ts";
+import { dueEvent, dueReminders, withinServiceWindow, type DueEvent } from "./scheduler.ts";
 import { localParts } from "./time.ts";
 import { transcribe } from "./transcribe.ts";
-import type { TurnInput, User } from "./types.ts";
+import type { Reminder, TurnInput, User } from "./types.ts";
 import { downloadMedia, type InboundMessage, type Sender } from "./whatsapp.ts";
 
 export interface AppDeps extends Deps {
@@ -35,6 +35,20 @@ export async function handleInbound(deps: AppDeps, msg: InboundMessage): Promise
     let input: TurnInput;
     let historyText: string;
     if (msg.type === "text") {
+      // Control de privacidad: borrar todo lo que Ancla sabe de ella (pide confirmación).
+      const cmd = msg.text.trim().toLowerCase();
+      if (cmd === "/olvidar") {
+        await deps.sender.sendText(
+          msg.from,
+          "Si quieres que me olvide de todo lo que sé de ti (tus rutinas, la gente que me has contado, tus notas, recordatorios, pendientes y nuestro historial), escribe /olvidar todo. No se puede deshacer. Si no, aquí seguimos igual.",
+        );
+        return;
+      }
+      if (cmd === "/olvidar todo") {
+        await deps.store.wipeUserData(user.id);
+        await deps.sender.sendText(msg.from, "Listo, borré todo lo que sabía de ti. Cuando quieras empezamos de cero.");
+        return;
+      }
       input = { type: "message", text: msg.text };
       historyText = msg.text;
     } else if (msg.type === "audio") {
@@ -73,10 +87,12 @@ export async function runTick(deps: AppDeps, now = deps.now?.() ?? new Date()): 
   const users = await deps.store.listUsers();
   let sent = 0;
   for (const user of users) {
-    const ev = dueEvent(user, now);
+    const pending = await deps.store.listPendingReminders(user.id);
+    const ev = dueEvent(user, now, pending);
     if (!ev) continue;
+    const reminders = ev === "reminder" ? dueReminders(pending, now) : [];
     try {
-      await serialize(user.phone, () => sendProactive(deps, user, ev, now));
+      await serialize(user.phone, () => sendProactive(deps, user, ev, now, reminders));
       sent++;
     } catch (err) {
       deps.log?.(`tick ${user.phone} ${ev}: ${(err as Error).message}`);
@@ -85,19 +101,32 @@ export async function runTick(deps: AppDeps, now = deps.now?.() ?? new Date()): 
   return sent;
 }
 
-async function sendProactive(deps: AppDeps, user: User, ev: "morning" | "evening" | "checkin", now: Date) {
+async function sendProactive(deps: AppDeps, user: User, ev: DueEvent, now: Date, reminders: Reminder[]) {
   // Marcar primero para no mandar duplicados si algo falla a medias.
   const today = localParts(now, user.timezone).date;
-  const mark: Partial<User> =
-    ev === "morning" ? { lastMorningDate: today } : ev === "evening" ? { lastEveningDate: today } : { checkinAt: null };
-  const fresh = await deps.store.updateUser(user.id, mark);
+  const mark: Partial<User> | null =
+    ev === "morning" ? { lastMorningDate: today } : ev === "evening" ? { lastEveningDate: today } : ev === "checkin" ? { checkinAt: null } : null;
+  let fresh = mark ? await deps.store.updateUser(user.id, mark) : user;
+  const turnDeps = { ...deps, now: () => now };
+
+  // Cada noche, antes del cierre, ordena lo aprendido en rutinas, perfil y voz.
+  if (ev === "evening") {
+    try {
+      if (await consolidate(turnDeps, fresh, now)) fresh = (await deps.store.getUserByPhone(user.phone)) ?? fresh;
+    } catch (err) {
+      deps.log?.(`memoria ${user.phone}: ${(err as Error).message}`);
+    }
+  }
 
   const inWindow = withinServiceWindow(fresh, now);
   if (!inWindow && !config.whatsappTemplateName) {
     deps.log?.(`tick ${user.phone} ${ev}: fuera de la ventana de 24 h y sin plantilla; se omite`);
     return;
   }
-  const reply = await runTurn({ ...deps, now: () => now }, fresh, { type: "event", name: ev });
+  const input: TurnInput = ev === "reminder" ? { type: "event", name: "reminder", reminders } : { type: "event", name: ev };
+  const reply = await runTurn(turnDeps, fresh, input);
+  // Si el cerebro falla antes de llegar aquí, el recordatorio sigue pendiente y se reintenta en el próximo tick.
+  if (ev === "reminder") await deps.store.setReminderStatus(reminders.map((r) => r.id), "sent");
   if (inWindow) await deps.sender.sendText(user.phone, reply);
   else await deps.sender.sendTemplate(user.phone, reply);
 }

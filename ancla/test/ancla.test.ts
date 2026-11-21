@@ -2,12 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { handleInbound, runTick, type AppDeps } from "../src/app.ts";
-import { buildContext, buildMessages, normalizeOutput, type Brain, type BrainContext } from "../src/brain.ts";
+import { buildContext, buildMessages, normalizeOutput, type Brain, type BrainContext, type ConsolidationContext, type ConsolidationOutput } from "../src/brain.ts";
 import { getOrCreateUser, runTurn } from "../src/handler.ts";
 import { countryFromPhone } from "../src/dialect.ts";
 import { dueEvent, withinServiceWindow } from "../src/scheduler.ts";
 import { MemoryStore } from "../src/store/memory.ts";
-import { localParts } from "../src/time.ts";
+import { localParts, localToIso, whenPhrase } from "../src/time.ts";
 import type { BrainOutput, User } from "../src/types.ts";
 import { ConsoleSender, parseWebhook, verifySignature } from "../src/whatsapp.ts";
 
@@ -15,6 +15,12 @@ import { ConsoleSender, parseWebhook, verifySignature } from "../src/whatsapp.ts
 class FakeBrain implements Brain {
   calls: BrainContext[] = [];
   next: Partial<BrainOutput> = {};
+  consolidated: ConsolidationOutput = { routines: [], profile: "", voice: "" };
+  consolidations: ConsolidationContext[] = [];
+  async consolidate(ctx: ConsolidationContext) {
+    this.consolidations.push(ctx);
+    return this.consolidated;
+  }
   async think(ctx: BrainContext) {
     this.calls.push(ctx);
     return normalizeOutput({ reply: "ok", ...this.next });
@@ -113,7 +119,7 @@ test("normalizeOutput tolera basura del modelo", () => {
 
 const baseUser = (patch: Partial<User> = {}): User => ({
   id: "u", phone: "1", name: "", timezone: "America/Mexico_City", morningTime: "08:30", eveningTime: "21:00",
-  proactive: true, energy: "unknown", focusItemId: null, notes: [], voice: "", routines: [], lastInboundAt: null, lastMorningDate: null,
+  proactive: true, energy: "unknown", focusItemId: null, notes: [], voice: "", routines: [], profile: "", people: [], lastInboundAt: null, lastMorningDate: null,
   lastEveningDate: null, checkinAt: null, createdAt: "", ...patch,
 });
 
@@ -187,6 +193,8 @@ test("contexto y mensajes para Claude", async () => {
     input: { type: "message", text: "hola" },
     now: new Date("2026-11-23T14:40:00Z"),
     doneToday: 0,
+    reminders: [],
+    observations: [],
   };
   const c = buildContext(ctx);
   assert.match(c, /t1 \[task\] Pagar luz .*ES SU 1 COSA DE HOY/);
@@ -259,7 +267,7 @@ test("aprende su voz y sus rutinas, sin duplicar y con tope", async () => {
 test("el contexto incluye dialecto, voz y rutinas", () => {
   const base = {
     items: [], history: [], input: { type: "message", text: "hola" } as const,
-    now: new Date("2026-11-23T14:40:00Z"), doneToday: 0,
+    now: new Date("2026-11-23T14:40:00Z"), doneToday: 0, reminders: [], observations: [],
   };
   const withVoice = buildContext({
     ...base,
@@ -270,4 +278,175 @@ test("el contexto incluye dialecto, voz y rutinas", () => {
   assert.match(withVoice, /Se despierta a las 7/);
   const fresh = buildContext({ ...base, user: baseUser({ phone: "584141234567" }) });
   assert.match(fresh, /todavía nada/);
+});
+
+test("conversión de hora local a UTC y frases de tiempo", () => {
+  assert.equal(localToIso("2026-11-23T08:00", "America/Caracas"), "2026-11-23T12:00:00.000Z");
+  assert.equal(localToIso("2026-11-23T08:00", "America/Mexico_City"), "2026-11-23T14:00:00.000Z");
+  assert.equal(localToIso("2026-02-31T10:00", "America/Caracas"), null);
+  assert.equal(localToIso("mañana 3pm", "America/Caracas"), null);
+  const now = new Date("2026-11-23T20:00:00Z"); // 14:00 en CDMX
+  assert.equal(whenPhrase("2026-11-23T14:42:00Z", now, "America/Mexico_City"), "hoy en la mañana (08:42)");
+  assert.equal(whenPhrase("2026-11-23T19:00:00Z", now, "America/Mexico_City"), "hoy en la tarde (13:00)");
+  assert.equal(whenPhrase("2026-11-22T21:10:00Z", now, "America/Mexico_City"), "ayer (15:10)");
+});
+
+test("crea recordatorios con sus palabras, ignora los inválidos y evita duplicados", async () => {
+  const { deps, brain, store } = setup(new Date("2026-11-23T14:00:00Z")); // 08:00 CDMX
+  const user = await getOrCreateUser(store, "521555");
+  const r = { when: "2026-11-23T15:00", text: "Llamar al dentista", quote: "después del almuerzo llamo al dentista" };
+  brain.next = {
+    reminders: [
+      r,
+      { when: "2026-11-23T07:00", text: "ya pasó", quote: "" }, // en el pasado
+      { when: "mañana", text: "formato malo", quote: "" },
+      { when: "2027-06-01T10:00", text: "muy lejano", quote: "" },
+    ],
+  };
+  await runTurn(deps, user, { type: "message", text: "después del almuerzo llamo al dentista" });
+  let pending = await store.listPendingReminders(user.id);
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].remindAt, "2026-11-23T21:00:00.000Z");
+  assert.equal(pending[0].quote, "después del almuerzo llamo al dentista");
+  assert.equal(pending[0].saidAt, "2026-11-23T14:00:00.000Z");
+
+  brain.next = { reminders: [r] }; // el mismo otra vez
+  await runTurn(deps, user, { type: "message", text: "..." });
+  assert.equal((await store.listPendingReminders(user.id)).length, 1);
+
+  brain.next = { cancel_reminder_refs: ["r1", "r9"] };
+  await runTurn(deps, user, { type: "message", text: "ya llamé" });
+  pending = await store.listPendingReminders(user.id);
+  assert.equal(pending.length, 0);
+  assert.match(JSON.stringify(brain.calls.at(-1)!.reminders.map((x) => x.text)), /dentista/);
+});
+
+test("el recordatorio llega a su hora citando lo que dijo, una sola vez", async () => {
+  const said = new Date("2026-11-23T14:00:00Z"); // 08:00 CDMX
+  const { deps, store, sender, brain } = setup(said);
+  const user = await getOrCreateUser(store, "521555");
+  await store.updateUser(user.id, { lastInboundAt: said.toISOString(), lastMorningDate: "2026-11-23", lastEveningDate: "2026-11-23" });
+  await store.addReminders([
+    { userId: user.id, remindAt: "2026-11-23T21:00:00.000Z", text: "Llamar al dentista", quote: "después del almuerzo llamo al dentista", saidAt: said.toISOString() },
+  ]);
+
+  assert.equal(await runTick(deps, new Date("2026-11-23T20:00:00Z")), 0, "todavía no es la hora");
+
+  brain.next = { reply: "Oye, esta mañana me dijiste que llamabas al dentista" };
+  const at = new Date("2026-11-23T21:05:00Z"); // 15:05 CDMX
+  assert.equal(await runTick({ ...deps, now: () => at }, at), 1);
+  assert.deepEqual(sender.sent.map((m) => m.text), ["Oye, esta mañana me dijiste que llamabas al dentista"]);
+  const input = brain.calls.at(-1)!.input;
+  assert.ok(input.type === "event" && input.name === "reminder" && input.reminders[0].quote.includes("dentista"));
+  assert.equal((await store.listPendingReminders(user.id)).length, 0);
+
+  sender.sent.length = 0;
+  assert.equal(await runTick({ ...deps, now: () => at }, at), 0, "no se repite");
+  assert.equal(sender.sent.length, 0);
+});
+
+test("un recordatorio muy atrasado ya no se manda solo, pero aparece como VENCIDO", async () => {
+  const { deps, store, sender, brain } = setup(new Date("2026-11-23T14:00:00Z"));
+  const user = await getOrCreateUser(store, "521555");
+  await store.updateUser(user.id, { lastInboundAt: "2026-11-23T14:00:00Z", lastMorningDate: "2026-11-23", lastEveningDate: "2026-11-23" });
+  await store.addReminders([
+    { userId: user.id, remindAt: "2026-11-23T14:30:00.000Z", text: "Pagar el internet", quote: "pago el internet hoy", saidAt: "2026-11-23T14:00:00.000Z" },
+  ]);
+  const late = new Date("2026-11-23T22:00:00Z"); // 7,5 h después
+  assert.equal(await runTick({ ...deps, now: () => late }, late), 0);
+  assert.equal(sender.sent.length, 0);
+
+  await runTurn({ ...deps, now: () => late }, (await store.getUserByPhone("521555"))!, { type: "message", text: "hola" });
+  const ctx = buildContext(brain.calls.at(-1)!);
+  assert.match(ctx, /r1 \[.*VENCIDO\] Pagar el internet — ella dijo: "pago el internet hoy"/);
+});
+
+test("guarda observaciones, personas y perfil sin pisar lo anterior", async () => {
+  const { deps, brain, store } = setup();
+  const user = await getOrCreateUser(store, "521555");
+  brain.next = {
+    observation: { activity: "viendo reels", state: "distracted", note: "después de comer" },
+    people: [{ name: "Marta", relation: "jefa", note: "pide reportes los lunes" }],
+    profile: "Creativa, se abruma con listas largas.",
+  };
+  await runTurn(deps, user, { type: "message", text: "me puse a ver reels, Marta quiere el reporte" });
+  const obs = await store.listObservationsSince(user.id, "2026-01-01T00:00:00Z", 10);
+  assert.deepEqual(obs.map((o) => [o.activity, o.state]), [["viendo reels", "distracted"]]);
+
+  brain.next = { people: [{ name: "marta", relation: "", note: "pide reportes los lunes y odia los retrasos" }, { name: "Luis", relation: "pareja", note: "" }] };
+  await runTurn(deps, (await store.getUserByPhone("521555"))!, { type: "message", text: "..." });
+  const u = (await store.getUserByPhone("521555"))!;
+  assert.deepEqual(u.people, [
+    { name: "Marta", relation: "jefa", note: "pide reportes los lunes y odia los retrasos" },
+    { name: "Luis", relation: "pareja", note: "" },
+  ]);
+  assert.equal(u.profile, "Creativa, se abruma con listas largas.", "perfil vacío = sin cambio");
+
+  brain.next = { observation: { activity: "", state: "unknown", note: "" } };
+  await runTurn(deps, u, { type: "message", text: "ok" });
+  assert.equal((await store.listObservationsSince(u.id, "2026-01-01T00:00:00Z", 10)).length, 1, "sin actividad no se anota");
+});
+
+test("cada noche consolida lo observado en rutinas y perfil", async () => {
+  const now = new Date("2026-11-24T03:10:00Z"); // 21:10 del 23 en CDMX
+  const { deps, store, sender, brain } = setup(now);
+  const user = await getOrCreateUser(store, "521555");
+  await store.updateUser(user.id, { lastInboundAt: "2026-11-23T20:00:00Z", lastMorningDate: "2026-11-23" });
+  for (const [at, state] of [["2026-11-22T22:00:00Z", "distracted"], ["2026-11-23T14:00:00Z", "focused"]] as const) {
+    await store.addObservation({ userId: user.id, at, activity: "algo", state, note: "" });
+  }
+  brain.consolidated = { routines: ["A media tarde se distrae con redes"], profile: "Creativa y muy sensible a la presión.", voice: "" };
+
+  // Con solo 2 observaciones todavía no hay material
+  await runTick(deps, now);
+  assert.equal(brain.consolidations.length, 0);
+
+  await store.updateUser(user.id, { lastEveningDate: null });
+  await store.addObservation({ userId: user.id, at: "2026-11-23T20:00:00Z", activity: "reels", state: "distracted", note: "" });
+  await runTick(deps, now);
+  assert.equal(brain.consolidations.length, 1);
+  const u = (await store.getUserByPhone("521555"))!;
+  assert.deepEqual(u.routines, ["A media tarde se distrae con redes"]);
+  assert.equal(u.profile, "Creativa y muy sensible a la presión.");
+  assert.equal(sender.sent.length, 2, "el cierre del día se manda en ambos ticks");
+});
+
+test("/olvidar pide confirmación y /olvidar todo borra lo aprendido", async () => {
+  const { deps, store, sender, brain } = setup();
+  const user = await getOrCreateUser(store, "521555");
+  await store.updateUser(user.id, { voice: "chama", profile: "x", routines: ["y"], notes: ["z"], people: [{ name: "A", relation: "", note: "" }] });
+  await store.addItems([{ userId: user.id, kind: "task", title: "T", firstStep: "", due: null, estimateMinutes: null }]);
+  await store.addObservation({ userId: user.id, at: "2026-11-23T14:00:00Z", activity: "a", state: "focused", note: "" });
+
+  await handleInbound(deps, textMsg("o1", "/olvidar"));
+  assert.match(sender.sent[0].text, /\/olvidar todo/);
+  assert.equal((await store.getUserByPhone("521555"))!.profile, "x", "todavía no borra");
+
+  await handleInbound(deps, textMsg("o2", "/Olvidar TODO"));
+  const u = (await store.getUserByPhone("521555"))!;
+  assert.deepEqual([u.voice, u.profile, u.routines, u.notes, u.people], ["", "", [], [], []]);
+  assert.equal((await store.listActiveItems(u.id)).length, 0);
+  assert.equal((await store.listObservationsSince(u.id, "2000-01-01T00:00:00Z", 5)).length, 0);
+  assert.equal(brain.calls.length, 0, "los comandos no pasan por el modelo");
+});
+
+test("el contexto incluye perfil, gente, recordatorios, lo de hoy y lo observado", () => {
+  const user = baseUser({
+    phone: "584141234567", timezone: "America/Caracas", profile: "Creativa", people: [{ name: "Marta", relation: "jefa", note: "pide reportes" }],
+  });
+  const ctx = buildContext({
+    user, items: [], now: new Date("2026-11-23T20:00:00Z"), doneToday: 0, input: { type: "message", text: "hola" },
+    history: [
+      { userId: "u", role: "user", text: "después del almuerzo llamo al dentista", createdAt: "2026-11-23T12:42:00Z" },
+      { userId: "u", role: "user", text: "mensaje de ayer", createdAt: "2026-11-22T12:42:00Z" },
+    ],
+    reminders: [{ id: "x", userId: "u", remindAt: "2026-11-23T19:00:00Z", text: "Llamar al dentista", quote: "después del almuerzo llamo al dentista", saidAt: "2026-11-23T12:42:00Z", status: "pending" }],
+    observations: [{ userId: "u", at: "2026-11-23T19:30:00Z", activity: "viendo reels", state: "distracted", note: "" }],
+  });
+  assert.match(ctx, /Creativa/);
+  assert.match(ctx, /Marta \(jefa\): pide reportes/);
+  assert.match(ctx, /r1 \[hoy 15:00 — VENCIDO\] Llamar al dentista — ella dijo: "después del almuerzo llamo al dentista" \(hoy en la mañana \(08:42\)\)/);
+  assert.match(ctx, /Lo que ella te dijo hoy \(con hora\):\n- 08:42 después del almuerzo llamo al dentista/);
+  assert.doesNotMatch(ctx, /mensaje de ayer/);
+  assert.match(ctx, /distracted — viendo reels/);
 });

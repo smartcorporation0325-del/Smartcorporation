@@ -2,12 +2,18 @@ import type { Brain } from "./brain.ts";
 import { config } from "./config.ts";
 import { countryFromPhone } from "./dialect.ts";
 import type { Store } from "./store/index.ts";
-import { isValidTime, isValidTimeZone, localMidnightIso } from "./time.ts";
-import type { BrainOutput, Item, TurnInput, User } from "./types.ts";
+import { isValidTime, isValidTimeZone, localMidnightIso, localToIso } from "./time.ts";
+import type { BrainOutput, Item, Reminder, TurnInput, User } from "./types.ts";
 
-const HISTORY_LIMIT = 20;
+const HISTORY_LIMIT = 40;
 const MAX_NOTES = 40;
 const MAX_ROUTINES = 30;
+const MAX_PEOPLE = 40;
+const MAX_PENDING_REMINDERS = 40;
+const REMINDER_HORIZON_DAYS = 60;
+const OBSERVATION_DAYS_IN_CONTEXT = 7;
+const OBSERVATION_DAYS_TO_CONSOLIDATE = 14;
+const DAY_MS = 86_400_000;
 
 export interface Deps {
   store: Store;
@@ -34,14 +40,17 @@ export async function runTurn(deps: Deps, user: User, input: TurnInput, userText
   const now = deps.now?.() ?? new Date();
   const { store } = deps;
 
-  const [items, history, doneToday] = await Promise.all([
+  const since = new Date(now.getTime() - OBSERVATION_DAYS_IN_CONTEXT * DAY_MS).toISOString();
+  const [items, history, doneToday, reminders, observations] = await Promise.all([
     store.listActiveItems(user.id),
     store.recentMessages(user.id, HISTORY_LIMIT),
     store.countDoneSince(user.id, localMidnightIso(now, user.timezone)),
+    store.listPendingReminders(user.id),
+    store.listObservationsSince(user.id, since, 40),
   ]);
 
-  const out = await deps.brain.think({ user, items, history, input, now, doneToday });
-  await applyOutput(store, user, items, out, now, input);
+  const out = await deps.brain.think({ user, items, history, input, now, doneToday, reminders, observations });
+  await applyOutput(store, user, items, reminders, out, now, input);
 
   if (input.type === "message") {
     await store.addMessage({ userId: user.id, role: "user", text: userText ?? input.text });
@@ -54,6 +63,7 @@ export async function applyOutput(
   store: Store,
   user: User,
   items: Item[],
+  reminders: Reminder[],
   out: BrainOutput,
   now: Date,
   input: TurnInput,
@@ -91,6 +101,35 @@ export async function applyOutput(
   }
   for (const id of dropped) if (!completed.has(id)) await store.updateItem(id, { status: "dropped" });
 
+  // Recordatorios: cancelar los que ya no hacen falta y crear los nuevos
+  const cancelIds = out.cancel_reminder_refs
+    .map((ref) => {
+      const m = /^r(\d+)$/.exec(ref.trim());
+      return m ? reminders[Number(m[1]) - 1]?.id : undefined;
+    })
+    .filter((id): id is string => Boolean(id));
+  if (cancelIds.length) await store.setReminderStatus(cancelIds, "cancelled");
+
+  const horizon = now.getTime() + REMINDER_HORIZON_DAYS * DAY_MS;
+  let room = MAX_PENDING_REMINDERS - (reminders.length - cancelIds.length);
+  const newReminders: Parameters<Store["addReminders"]>[0] = [];
+  for (const r of out.reminders) {
+    const iso = localToIso(r.when, user.timezone);
+    if (!iso || room <= 0) continue;
+    const t = Date.parse(iso);
+    if (t <= now.getTime() || t > horizon) continue; // pasado o demasiado lejano
+    const same = (x: { remindAt: string; text: string }) => x.remindAt === iso && x.text === r.text;
+    if (reminders.some(same) || newReminders.some(same)) continue;
+    newReminders.push({ userId: user.id, remindAt: iso, text: r.text, quote: r.quote, saidAt: nowIso });
+    room--;
+  }
+  if (newReminders.length) await store.addReminders(newReminders);
+
+  // Lo que estaba haciendo y cómo estaba (se analiza de noche)
+  if (input.type === "message" && (out.observation.activity || out.observation.note)) {
+    await store.addObservation({ userId: user.id, at: nowIso, ...out.observation });
+  }
+
   // Perfil de la persona
   const patch: Partial<User> = {};
   if (input.type === "message") patch.lastInboundAt = nowIso;
@@ -120,6 +159,16 @@ export async function applyOutput(
   }
 
   if (out.voice) patch.voice = out.voice;
+  if (out.profile) patch.profile = out.profile;
+  if (out.people.length) {
+    const people = [...user.people];
+    for (const p of out.people) {
+      const i = people.findIndex((x) => x.name.toLowerCase() === p.name.toLowerCase());
+      if (i >= 0) people[i] = { name: people[i].name, relation: p.relation || people[i].relation, note: p.note || people[i].note };
+      else people.push(p);
+    }
+    patch.people = people.slice(-MAX_PEOPLE);
+  }
   if (out.new_routines.length) {
     const merged = [...user.routines, ...out.new_routines.filter((r) => !user.routines.includes(r))];
     patch.routines = merged.slice(-MAX_ROUTINES);
@@ -133,4 +182,22 @@ export async function applyOutput(
   if (s.proactive !== "no_change") patch.proactive = s.proactive === "on";
 
   if (Object.keys(patch).length) await store.updateUser(user.id, patch);
+}
+
+/**
+ * Memoria nocturna: convierte las observaciones de los últimos días en rutinas, perfil y voz.
+ * Devuelve true si hubo algo que analizar.
+ */
+export async function consolidate(deps: Deps, user: User, now: Date): Promise<boolean> {
+  const since = new Date(now.getTime() - OBSERVATION_DAYS_TO_CONSOLIDATE * DAY_MS).toISOString();
+  const observations = await deps.store.listObservationsSince(user.id, since, 150);
+  if (observations.length < 3) return false; // todavía no hay material para sacar patrones
+
+  const out = await deps.brain.consolidate({ user, observations, now });
+  const patch: Partial<User> = {};
+  if (out.routines.length) patch.routines = out.routines.slice(0, MAX_ROUTINES);
+  if (out.profile) patch.profile = out.profile;
+  if (out.voice) patch.voice = out.voice;
+  if (Object.keys(patch).length) await deps.store.updateUser(user.id, patch);
+  return true;
 }

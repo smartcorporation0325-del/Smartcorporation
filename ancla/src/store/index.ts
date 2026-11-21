@@ -1,6 +1,7 @@
-import type { ChatMessage, Item, User } from "../types.ts";
+import type { ChatMessage, Item, Observation, Reminder, User } from "../types.ts";
 
 export type NewItem = Omit<Item, "id" | "createdAt" | "startedAt" | "doneAt" | "status">;
+export type NewReminder = Omit<Reminder, "id" | "status">;
 
 /** Persistencia. Hay dos implementaciones: memoria (dev/tests) y Supabase (producción). */
 export interface Store {
@@ -16,6 +17,16 @@ export interface Store {
 
   addMessage(msg: Omit<ChatMessage, "createdAt">): Promise<void>;
   recentMessages(userId: string, limit: number): Promise<ChatMessage[]>; // orden cronológico
+
+  addReminders(reminders: NewReminder[]): Promise<Reminder[]>;
+  listPendingReminders(userId: string): Promise<Reminder[]>; // orden por fecha
+  setReminderStatus(ids: string[], status: "sent" | "cancelled"): Promise<void>;
+
+  addObservation(o: Observation): Promise<void>;
+  listObservationsSince(userId: string, sinceIso: string, limit: number): Promise<Observation[]>; // cronológico
+
+  /** Borra todo lo que Ancla sabe de la persona (conserva solo su número). */
+  wipeUserData(userId: string): Promise<void>;
 
   /** Devuelve true la primera vez que ve este id (WhatsApp reintenta webhooks). */
   claimInboundMessage(waMessageId: string): Promise<boolean>;

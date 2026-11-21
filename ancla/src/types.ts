@@ -17,6 +17,8 @@ export interface User {
   notes: string[]; // cosas que Ancla aprendió de la persona
   voice: string; // cómo hablarle (dialecto, confianza, modismos, emojis); lo mantiene el modelo
   routines: string[]; // rutinas y hábitos observados
+  profile: string; // quién es: personalidad, contexto de vida, qué la motiva (lo mantiene el modelo)
+  people: Person[]; // gente importante en su vida
   lastInboundAt: string | null; // ISO; para la ventana de 24 h de WhatsApp
   lastMorningDate: string | null; // "YYYY-MM-DD" local del último buenos días enviado
   lastEveningDate: string | null; // "YYYY-MM-DD" local del último cierre enviado
@@ -48,7 +50,8 @@ export interface ChatMessage {
 /** Lo que dispara un turno de Ancla: un mensaje de la persona o un evento del sistema. */
 export type TurnInput =
   | { type: "message"; text: string; image?: { mediaType: string; base64: string } }
-  | { type: "event"; name: "morning" | "evening" | "checkin" };
+  | { type: "event"; name: "morning" | "evening" | "checkin" }
+  | { type: "event"; name: "reminder"; reminders: Reminder[] };
 
 /** Salida estructurada que devuelve el modelo en cada turno. */
 export interface BrainOutput {
@@ -69,6 +72,11 @@ export interface BrainOutput {
   new_notes: string[];
   voice: string; // "" = sin cambio
   new_routines: string[];
+  reminders: { when: string; text: string; quote: string }[]; // when = hora local YYYY-MM-DDTHH:MM
+  cancel_reminder_refs: string[]; // refs cortas tipo "r2"
+  observation: { activity: string; state: ActivityState; note: string }; // activity "" = nada que anotar
+  people: Person[];
+  profile: string; // "" = sin cambio
   settings: {
     name: string;
     timezone: string;
@@ -76,4 +84,35 @@ export interface BrainOutput {
     evening_time: string;
     proactive: "no_change" | "on" | "off";
   };
+}
+
+export interface Person {
+  name: string;
+  relation: string; // "mamá", "jefa", "pareja"...
+  note: string; // lo que importa de esa persona
+}
+
+export type ActivityState = "focused" | "distracted" | "stuck" | "tired" | "energetic" | "anxious" | "resting" | "unknown";
+export const ACTIVITY_STATES: readonly ActivityState[] = [
+  "focused", "distracted", "stuck", "tired", "energetic", "anxious", "resting", "unknown",
+];
+
+/** Algo que la persona dijo que haría (o pidió que le recordaran), con sus palabras originales. */
+export interface Reminder {
+  id: string;
+  userId: string;
+  remindAt: string; // ISO UTC
+  text: string; // qué recordarle
+  quote: string; // lo que ella dijo, textual
+  saidAt: string; // ISO UTC de cuándo lo dijo
+  status: "pending" | "sent" | "cancelled";
+}
+
+/** Una foto de lo que estaba haciendo y cómo estaba en un momento; de noche se analizan juntas. */
+export interface Observation {
+  userId: string;
+  at: string; // ISO UTC
+  activity: string;
+  state: ActivityState;
+  note: string;
 }

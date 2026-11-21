@@ -9,11 +9,25 @@ La persona le escribe (o le manda audios y fotos) por WhatsApp, y Ancla:
 - **Escribe primero:** "tu 1 cosa de hoy" por la mañana, check-ins de *body doubling* ("¿empezaste?") y un cierre del día sin culpa.
 - **Te va conociendo:** guarda notas sobre ti, tu energía y tus horarios.
 
-## Cómo se adapta a cada persona
-- **Dialecto:** el prefijo del teléfono da una pista inicial de país, zona horaria y modismos (`src/dialect.ts`). Un número +58 arranca con tono venezolano y hora de Caracas.
-- **Voz:** Ancla mantiene una descripción corta de *cómo hablarle a esa persona* (confianza, modismos que ella usa, emojis, largo de mensajes) y la reescribe cuando nota algo nuevo. Si la persona dice de dónde es, eso manda sobre el teléfono.
-- **Rutinas:** va guardando hábitos que la persona cuenta o que se notan (a qué hora despierta, cuándo rinde mejor) y los usa para proponerle cosas.
-- No es un entrenamiento del modelo: son notas que se guardan y se le pasan a Claude en cada mensaje. **Para que se conserven entre sesiones hace falta Supabase**; en el simulador todo se borra al salir.
+## Cómo se adapta y aprende de cada persona
+
+**Tono:** el prefijo del teléfono da una pista inicial de país, zona horaria y modismos (`src/dialect.ts`): un número +58 arranca en venezolano y con hora de Caracas. Después Ancla guarda una descripción de *cómo hablarle* (confianza, modismos que usa la persona, emojis, largo) y la corrige sola. Si la persona dice de dónde es, eso manda sobre el teléfono.
+
+**Memoria que va armando mientras la usas:**
+| Qué | Cómo se usa |
+|---|---|
+| **Recordatorios con sus palabras** | Si dices "después del almuerzo llamo al dentista", guarda la hora y tu frase textual. A la hora te escribe: *"esta mañana me dijiste que ibas a llamar al dentista y se te está pasando"*. Si lo haces, lo cancela. |
+| **Lo que dijiste hoy, con hora** | Ve tus mensajes de hoy con la hora, así puede decirte "me dijiste X a las 8:42". |
+| **Gente de tu vida** | Guarda nombre, relación y una nota por cada persona que menciones (jefa, mamá, pareja…) y la usa por su nombre. |
+| **Qué haces y cómo estás** | En cada mensaje anota qué estás haciendo y tu estado (enfocada, distraída, atascada, cansada…) con la hora. |
+| **Patrones** | Cada noche, antes del cierre del día, analiza las observaciones de los últimos 14 días y actualiza tus **rutinas** y tu **perfil** ("a media tarde se distrae con redes", "rinde mejor de noche"). Necesita al menos 3 observaciones. |
+| **Perfil y voz** | Resumen de quién eres, qué te motiva y qué te bloquea; y cómo hablarte. |
+
+Todo esto lo usa para proponerte cosas a la hora en que rindes mejor y adelantarse a tus momentos de distracción.
+
+**Privacidad:** es información íntima. Si preguntas "¿qué sabes de mí?", te lo cuenta. Escribir `/olvidar` pide confirmación y `/olvidar todo` borra rutinas, perfil, personas, notas, recordatorios, pendientes, observaciones e historial. Los datos solo viven en tu base de Supabase y se mandan a la API de Claude para generar cada respuesta.
+
+**No es entrenar un modelo:** son notas que se guardan y se le pasan a Claude en cada mensaje. **Para que se conserven entre sesiones hace falta Supabase** (en el simulador se borran al salir). Si ya habías creado las tablas, vuelve a correr `supabase/schema.sql` completo.
 
 ## Cómo está hecho
 
@@ -78,6 +92,7 @@ Sin plantilla, Ancla simplemente no escribe fuera de la ventana. No pasa nada: c
 
 ## Limitaciones conocidas de esta versión
 - Sin panel web: todo pasa por WhatsApp. Puedes ver los datos en Supabase.
-- El "aprendizaje" es simple: notas en texto y fechas de inicio y fin de cada pendiente, todavía sin un estimador de tiempos.
+- Los patrones los saca el modelo leyendo las observaciones; todavía no hay un estimador numérico de cuánto tardas en cada tipo de tarea.
+- Los recordatorios salen con la precisión del cron (cada ~10 min) y solo si pasaron menos de 6 h de su hora; si no, aparecen como "vencidos" cuando la persona vuelve a escribir.
 - No hay modo de voz en tiempo real ni aparato físico (eso viene después, ver el brain dump).
 - La cola que ordena los mensajes de cada persona vive en memoria: corre **una sola instancia** del servidor.

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { ChatMessage, Item, User } from "../types.ts";
-import type { NewItem, Store } from "./index.ts";
+import type { ChatMessage, Item, Observation, Reminder, User } from "../types.ts";
+import type { NewItem, NewReminder, Store } from "./index.ts";
 
 /** Store en memoria: se pierde al reiniciar. Solo para desarrollo y tests. */
 export class MemoryStore implements Store {
@@ -8,6 +8,8 @@ export class MemoryStore implements Store {
   items = new Map<string, Item>();
   messages: ChatMessage[] = [];
   seen = new Set<string>();
+  reminders = new Map<string, Reminder>();
+  observations: Observation[] = [];
 
   async getUserByPhone(phone: string) {
     for (const u of this.users.values()) if (u.phone === phone) return { ...u };
@@ -25,6 +27,8 @@ export class MemoryStore implements Store {
       notes: [],
       voice: "",
       routines: [],
+      profile: "",
+      people: [],
       lastInboundAt: null,
       lastMorningDate: null,
       lastEveningDate: null,
@@ -79,6 +83,51 @@ export class MemoryStore implements Store {
 
   async recentMessages(userId: string, limit: number) {
     return this.messages.filter((m) => m.userId === userId).slice(-limit);
+  }
+
+  async addReminders(rs: NewReminder[]) {
+    return rs.map((r) => {
+      const x: Reminder = { ...r, id: randomUUID(), status: "pending" };
+      this.reminders.set(x.id, x);
+      return { ...x };
+    });
+  }
+
+  async listPendingReminders(userId: string) {
+    return [...this.reminders.values()]
+      .filter((r) => r.userId === userId && r.status === "pending")
+      .sort((a, b) => a.remindAt.localeCompare(b.remindAt))
+      .map((r) => ({ ...r }));
+  }
+
+  async setReminderStatus(ids: string[], status: "sent" | "cancelled") {
+    for (const id of ids) {
+      const r = this.reminders.get(id);
+      if (r) r.status = status;
+    }
+  }
+
+  async addObservation(o: Observation) {
+    this.observations.push({ ...o });
+  }
+
+  async listObservationsSince(userId: string, sinceIso: string, limit: number) {
+    return this.observations
+      .filter((o) => o.userId === userId && o.at >= sinceIso)
+      .sort((a, b) => a.at.localeCompare(b.at))
+      .slice(-limit)
+      .map((o) => ({ ...o }));
+  }
+
+  async wipeUserData(userId: string) {
+    for (const [id, i] of this.items) if (i.userId === userId) this.items.delete(id);
+    for (const [id, r] of this.reminders) if (r.userId === userId) this.reminders.delete(id);
+    this.messages = this.messages.filter((m) => m.userId !== userId);
+    this.observations = this.observations.filter((o) => o.userId !== userId);
+    const u = this.users.get(userId);
+    if (u) {
+      Object.assign(u, { notes: [], voice: "", routines: [], profile: "", people: [], energy: "unknown", focusItemId: null, checkinAt: null });
+    }
   }
 
   async claimInboundMessage(id: string) {

@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { ChatMessage, Item, User } from "../types.ts";
-import type { NewItem, Store } from "./index.ts";
+import type { ChatMessage, Item, Observation, Reminder, User } from "../types.ts";
+import type { NewItem, NewReminder, Store } from "./index.ts";
 
 // Mapeo entre columnas snake_case de Postgres (supabase/schema.sql) y los tipos camelCase.
 
@@ -19,6 +19,8 @@ const userFromRow = (r: Row): User => ({
   notes: r.notes ?? [],
   voice: r.voice ?? "",
   routines: r.routines ?? [],
+  profile: r.profile ?? "",
+  people: r.people ?? [],
   lastInboundAt: r.last_inbound_at,
   lastMorningDate: r.last_morning_date,
   lastEveningDate: r.last_evening_date,
@@ -38,6 +40,8 @@ const userToRow = (u: Partial<User>): Row => {
     notes: "notes",
     voice: "voice",
     routines: "routines",
+    profile: "profile",
+    people: "people",
     lastInboundAt: "last_inbound_at",
     lastMorningDate: "last_morning_date",
     lastEveningDate: "last_evening_date",
@@ -60,6 +64,16 @@ const itemFromRow = (r: Row): Item => ({
   createdAt: r.created_at,
   startedAt: r.started_at,
   doneAt: r.done_at,
+});
+
+const reminderFromRow = (r: Row): Reminder => ({
+  id: r.id,
+  userId: r.user_id,
+  remindAt: r.remind_at,
+  text: r.text,
+  quote: r.quote,
+  saidAt: r.said_at,
+  status: r.status,
 });
 
 function check<T>(res: { data: T; error: { message: string } | null }): T {
@@ -166,6 +180,64 @@ export class SupabaseStore implements Store {
     return (rows ?? [])
       .reverse()
       .map((r: Row): ChatMessage => ({ userId: r.user_id, role: r.role, text: r.text, createdAt: r.created_at }));
+  }
+
+  async addReminders(rs: NewReminder[]) {
+    if (rs.length === 0) return [];
+    const rows = check(
+      await this.db
+        .from("ancla_reminders")
+        .insert(rs.map((r) => ({ user_id: r.userId, remind_at: r.remindAt, text: r.text, quote: r.quote, said_at: r.saidAt })))
+        .select(),
+    );
+    return (rows ?? []).map(reminderFromRow);
+  }
+
+  async listPendingReminders(userId: string) {
+    const rows = check(
+      await this.db.from("ancla_reminders").select("*").eq("user_id", userId).eq("status", "pending").order("remind_at"),
+    );
+    return (rows ?? []).map(reminderFromRow);
+  }
+
+  async setReminderStatus(ids: string[], status: "sent" | "cancelled") {
+    if (ids.length === 0) return;
+    check(await this.db.from("ancla_reminders").update({ status }).in("id", ids));
+  }
+
+  async addObservation(o: Observation) {
+    check(
+      await this.db
+        .from("ancla_observations")
+        .insert({ user_id: o.userId, at: o.at, activity: o.activity, state: o.state, note: o.note }),
+    );
+  }
+
+  async listObservationsSince(userId: string, sinceIso: string, limit: number) {
+    const rows = check(
+      await this.db
+        .from("ancla_observations")
+        .select("*")
+        .eq("user_id", userId)
+        .gte("at", sinceIso)
+        .order("at", { ascending: false })
+        .limit(limit),
+    );
+    return (rows ?? [])
+      .reverse()
+      .map((r: Row): Observation => ({ userId: r.user_id, at: r.at, activity: r.activity, state: r.state, note: r.note }));
+  }
+
+  async wipeUserData(userId: string) {
+    for (const table of ["ancla_items", "ancla_messages", "ancla_reminders", "ancla_observations"]) {
+      check(await this.db.from(table).delete().eq("user_id", userId));
+    }
+    check(
+      await this.db
+        .from("ancla_users")
+        .update({ notes: [], voice: "", routines: [], profile: "", people: [], energy: "unknown", focus_item_id: null, checkin_at: null })
+        .eq("id", userId),
+    );
   }
 
   async claimInboundMessage(waMessageId: string) {
