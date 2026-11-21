@@ -106,6 +106,33 @@
 
 ---
 
+## 5b. Versión hardware: un "compañero de escritorio" con pantallita
+
+**Cómo funcionan estos aparatos:** el modelo de IA **no corre dentro del aparato**. Un chip barato (ESP32-S3) se encarga del micrófono, el altavoz, la pantalla y los botones, y manda la voz a la nube, donde está el modelo. Así funcionan los proyectos abiertos tipo *xiaozhi-esp32*. Según varias notas, desde octubre de 2026 Meta también ofrece "Muse Gadgets", un SDK abierto para ESP32 y Linux (no lo pude verificar en fuente primaria). Ese camino te ata a Meta, así que conviene **firmware abierto + nuestro propio backend** (el mismo del bot de WhatsApp).
+
+**Por qué tiene sentido para TDA:**
+- **Está a la vista:** no depende de acordarte de abrir una app. Un objeto físico en el escritorio funciona como recordatorio permanente.
+- **No es el teléfono:** sin feed ni notificaciones de otras apps, así que distrae menos.
+- **El tiempo se ve:** un anillo de LEDs o una pantalla redonda que se vacía, como un Time Timer, pero inteligente.
+- **Body doubling físico:** una "carita" que te acompaña, se fija en ti y te da check-ins.
+
+**Concepto "Ancla" (nombre provisional):**
+- **Pantalla redonda de 1.3–2"** con **una sola cosa**: la siguiente acción y el timer visual.
+- **Botón grande "push-to-talk"** para el brain dump. Lo aprietas, hablas y sueltas.
+- **Botón "atascado/a"**, que pide un microdesglose del paso.
+- **Vibración y luz suave** para transiciones ("en 5 min tienes que salir"), sin pitidos estresantes.
+- **Modo acompañante:** la carita "trabaja contigo" y celebra cuando empiezas.
+- Se sincroniza con WhatsApp y la app: es **la misma memoria y el mismo asistente** en todos los canales.
+
+**Prototipo (≈ US$30–80 en piezas):**
+- Placa ESP32-S3 con pantalla, micrófono y altavoz ya integrados. Opciones: M5Stack (CoreS3 / StickS3), Waveshare ESP32-S3 con LCD redondo, o un kit compatible con xiaozhi.
+- Motor de vibración, anillo de LEDs WS2812 y carcasa impresa en 3D.
+- Firmware basado en xiaozhi-esp32: la palabra de activación corre en el chip y el resto va a nuestro servidor (transcripción → Claude → voz).
+
+**Riesgos:** fabricar es caro y lento (certificaciones, inventario, devoluciones). Por eso conviene validar primero con software (WhatsApp) y con 10–20 prototipos hechos a mano. Si a la gente le gusta, entonces se busca financiamiento (Kickstarter) o un fabricante.
+
+---
+
 ## 6. MVP en 4–6 semanas (propuesta)
 
 **Hipótesis a validar:** *"Si capturar es tan fácil como mandar un audio y la IA me dice el primer paso pequeño, empiezo más tareas."*
