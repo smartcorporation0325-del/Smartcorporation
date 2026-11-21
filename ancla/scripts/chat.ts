@@ -8,7 +8,9 @@ import { getOrCreateUser, runTurn } from "../src/handler.ts";
 import { MemoryStore } from "../src/store/memory.ts";
 import { ConsoleSender } from "../src/whatsapp.ts";
 
-const PHONE = "5210000000000";
+// El prefijo del número define el país (dialecto y zona horaria iniciales). 58 = Venezuela.
+// Para probar otro país: SIM_PHONE=5215512345678 npm run chat
+const PHONE = process.env.SIM_PHONE ?? "584140000000";
 const store = new MemoryStore();
 const sender = new ConsoleSender();
 const deps: AppDeps = { store, brain: new ClaudeBrain(), sender, log: console.error };

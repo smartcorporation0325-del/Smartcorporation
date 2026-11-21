@@ -13,6 +13,8 @@ create table if not exists ancla_users (
   energy text not null default 'unknown' check (energy in ('unknown','low','medium','high')),
   focus_item_id uuid,
   notes text[] not null default '{}',
+  voice text not null default '',
+  routines text[] not null default '{}',
   last_inbound_at timestamptz,
   last_morning_date date,
   last_evening_date date,
@@ -54,3 +56,7 @@ alter table ancla_users enable row level security;
 alter table ancla_items enable row level security;
 alter table ancla_messages enable row level security;
 alter table ancla_inbound_ids enable row level security;
+
+-- Si ya habías creado las tablas antes de la versión con voz y rutinas, corre esto una vez:
+alter table ancla_users add column if not exists voice text not null default '';
+alter table ancla_users add column if not exists routines text[] not null default '{}';

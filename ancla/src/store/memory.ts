@@ -23,6 +23,8 @@ export class MemoryStore implements Store {
       energy: "unknown",
       focusItemId: null,
       notes: [],
+      voice: "",
+      routines: [],
       lastInboundAt: null,
       lastMorningDate: null,
       lastEveningDate: null,

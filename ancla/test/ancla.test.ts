@@ -4,6 +4,7 @@ import { createHmac } from "node:crypto";
 import { handleInbound, runTick, type AppDeps } from "../src/app.ts";
 import { buildContext, buildMessages, normalizeOutput, type Brain, type BrainContext } from "../src/brain.ts";
 import { getOrCreateUser, runTurn } from "../src/handler.ts";
+import { countryFromPhone } from "../src/dialect.ts";
 import { dueEvent, withinServiceWindow } from "../src/scheduler.ts";
 import { MemoryStore } from "../src/store/memory.ts";
 import { localParts } from "../src/time.ts";
@@ -112,7 +113,7 @@ test("normalizeOutput tolera basura del modelo", () => {
 
 const baseUser = (patch: Partial<User> = {}): User => ({
   id: "u", phone: "1", name: "", timezone: "America/Mexico_City", morningTime: "08:30", eveningTime: "21:00",
-  proactive: true, energy: "unknown", focusItemId: null, notes: [], lastInboundAt: null, lastMorningDate: null,
+  proactive: true, energy: "unknown", focusItemId: null, notes: [], voice: "", routines: [], lastInboundAt: null, lastMorningDate: null,
   lastEveningDate: null, checkinAt: null, createdAt: "", ...patch,
 });
 
@@ -140,13 +141,13 @@ test("ventana de 24 h de WhatsApp", () => {
 test("tick: manda el buenos días una sola vez y no escribe fuera de la ventana sin plantilla", async () => {
   const now = new Date("2026-11-23T14:40:00Z");
   const { deps, store, sender, brain } = setup(now);
-  const u1 = await getOrCreateUser(store, "111");
+  const u1 = await getOrCreateUser(store, "5215551");
   await store.updateUser(u1.id, { lastInboundAt: "2026-11-23T02:00:00Z" });
-  await getOrCreateUser(store, "222"); // nunca escribió: fuera de la ventana
+  await getOrCreateUser(store, "5215552"); // nunca escribió: fuera de la ventana
 
   brain.next = { reply: "Buenos días. Tu 1 cosa: ..." };
   assert.equal(await runTick(deps, now), 2);
-  assert.deepEqual(sender.sent, [{ to: "111", text: "Buenos días. Tu 1 cosa: ...", template: false }]);
+  assert.deepEqual(sender.sent, [{ to: "5215551", text: "Buenos días. Tu 1 cosa: ...", template: false }]);
   assert.equal(brain.calls[0].input.type, "event");
 
   sender.sent.length = 0;
@@ -218,4 +219,55 @@ test("webhook: firma y parseo", () => {
   assert.equal(msgs[1].type, "audio");
   assert.equal(msgs[2].type, "unsupported");
   assert.deepEqual(parseWebhook({ entry: [{ changes: [{ value: { statuses: [{}] } }] }] }), []);
+});
+
+test("dialecto y zona horaria según el teléfono", async () => {
+  assert.equal(countryFromPhone("584141234567")?.timezone, "America/Caracas");
+  assert.match(countryFromPhone("584141234567")!.dialect, /venezolano/);
+  assert.equal(countryFromPhone("5215512345678")?.timezone, "America/Mexico_City");
+  assert.equal(countryFromPhone("18095551234")?.timezone, "America/Santo_Domingo");
+  assert.equal(countryFromPhone("999"), null);
+  const { store } = setup();
+  assert.equal((await getOrCreateUser(store, "584141234567")).timezone, "America/Caracas");
+});
+
+test("aprende su voz y sus rutinas, sin duplicar y con tope", async () => {
+  const { deps, brain, store } = setup();
+  const user = await getOrCreateUser(store, "584141234567");
+  brain.next = {
+    voice: "Venezolana. Amiga cercana, dice 'chama', mensajes cortos, sin emojis.",
+    new_routines: ["Se despierta a las 7", "Rinde mejor en la tarde"],
+  };
+  await runTurn(deps, user, { type: "message", text: "chama hola" });
+  let u = (await store.getUserByPhone("584141234567"))!;
+  assert.match(u.voice, /Venezolana/);
+  assert.equal(u.routines.length, 2);
+
+  brain.next = { new_routines: ["Se despierta a las 7", "Hace ejercicio los lunes"] };
+  await runTurn(deps, u, { type: "message", text: "..." });
+  u = (await store.getUserByPhone("584141234567"))!;
+  assert.match(u.voice, /Venezolana/, "voz vacía = sin cambio");
+  assert.deepEqual(u.routines, ["Se despierta a las 7", "Rinde mejor en la tarde", "Hace ejercicio los lunes"]);
+
+  brain.next = { new_routines: Array.from({ length: 40 }, (_, i) => `rutina ${i}`) };
+  await runTurn(deps, u, { type: "message", text: "..." });
+  u = (await store.getUserByPhone("584141234567"))!;
+  assert.equal(u.routines.length, 30);
+  assert.equal(u.routines.at(-1), "rutina 39");
+});
+
+test("el contexto incluye dialecto, voz y rutinas", () => {
+  const base = {
+    items: [], history: [], input: { type: "message", text: "hola" } as const,
+    now: new Date("2026-11-23T14:40:00Z"), doneToday: 0,
+  };
+  const withVoice = buildContext({
+    ...base,
+    user: baseUser({ phone: "584141234567", voice: "Mucha confianza, dice chama", routines: ["Se despierta a las 7"] }),
+  });
+  assert.match(withVoice, /Venezuela → venezolano/);
+  assert.match(withVoice, /Mucha confianza, dice chama/);
+  assert.match(withVoice, /Se despierta a las 7/);
+  const fresh = buildContext({ ...base, user: baseUser({ phone: "584141234567" }) });
+  assert.match(fresh, /todavía nada/);
 });

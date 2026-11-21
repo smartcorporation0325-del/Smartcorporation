@@ -9,6 +9,12 @@ La persona le escribe (o le manda audios y fotos) por WhatsApp, y Ancla:
 - **Escribe primero:** "tu 1 cosa de hoy" por la mañana, check-ins de *body doubling* ("¿empezaste?") y un cierre del día sin culpa.
 - **Te va conociendo:** guarda notas sobre ti, tu energía y tus horarios.
 
+## Cómo se adapta a cada persona
+- **Dialecto:** el prefijo del teléfono da una pista inicial de país, zona horaria y modismos (`src/dialect.ts`). Un número +58 arranca con tono venezolano y hora de Caracas.
+- **Voz:** Ancla mantiene una descripción corta de *cómo hablarle a esa persona* (confianza, modismos que ella usa, emojis, largo de mensajes) y la reescribe cuando nota algo nuevo. Si la persona dice de dónde es, eso manda sobre el teléfono.
+- **Rutinas:** va guardando hábitos que la persona cuenta o que se notan (a qué hora despierta, cuándo rinde mejor) y los usa para proponerle cosas.
+- No es un entrenamiento del modelo: son notas que se guardan y se le pasan a Claude en cada mensaje. **Para que se conserven entre sesiones hace falta Supabase**; en el simulador todo se borra al salir.
+
 ## Cómo está hecho
 
 ```
@@ -36,7 +42,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 npm run chat
 ```
 
-Escribe como en WhatsApp. Comandos del simulador: `/manana` (buenos días), `/noche` (cierre), `/checkin`, `/pendientes`, `/perfil`, `/salir`.
+Escribe como en WhatsApp. El simulador usa un número de Venezuela (+58); para otro país: `SIM_PHONE=5215512345678 npm run chat`. Comandos del simulador: `/manana` (buenos días), `/noche` (cierre), `/checkin`, `/pendientes`, `/perfil`, `/salir`.
 
 Pruebas automáticas (no necesitan llaves): `npm test` y `npm run typecheck`.
 

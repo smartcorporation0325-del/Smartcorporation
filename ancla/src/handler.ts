@@ -1,11 +1,13 @@
 import type { Brain } from "./brain.ts";
 import { config } from "./config.ts";
+import { countryFromPhone } from "./dialect.ts";
 import type { Store } from "./store/index.ts";
 import { isValidTime, isValidTimeZone, localMidnightIso } from "./time.ts";
 import type { BrainOutput, Item, TurnInput, User } from "./types.ts";
 
 const HISTORY_LIMIT = 20;
 const MAX_NOTES = 40;
+const MAX_ROUTINES = 30;
 
 export interface Deps {
   store: Store;
@@ -18,7 +20,7 @@ export async function getOrCreateUser(store: Store, phone: string, profileName =
   if (existing) return existing;
   return store.createUser(phone, {
     name: profileName,
-    timezone: config.defaultTimezone,
+    timezone: countryFromPhone(phone)?.timezone ?? config.defaultTimezone,
     morningTime: config.defaultMorningTime,
     eveningTime: config.defaultEveningTime,
   });
@@ -115,6 +117,12 @@ export async function applyOutput(
   if (out.new_notes.length) {
     const merged = [...user.notes, ...out.new_notes.filter((n) => !user.notes.includes(n))];
     patch.notes = merged.slice(-MAX_NOTES);
+  }
+
+  if (out.voice) patch.voice = out.voice;
+  if (out.new_routines.length) {
+    const merged = [...user.routines, ...out.new_routines.filter((r) => !user.routines.includes(r))];
+    patch.routines = merged.slice(-MAX_ROUTINES);
   }
 
   const s = out.settings;

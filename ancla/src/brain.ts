@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config.ts";
+import { countryFromPhone } from "./dialect.ts";
 import { SYSTEM_PROMPT } from "./prompt.ts";
 import { localParts } from "./time.ts";
 import type { BrainOutput, ChatMessage, Item, TurnInput, User } from "./types.ts";
@@ -37,6 +38,8 @@ export const OUTPUT_SCHEMA = {
     "energy",
     "checkin_in_minutes",
     "new_notes",
+    "voice",
+    "new_routines",
     "settings",
   ],
   properties: {
@@ -63,6 +66,11 @@ export const OUTPUT_SCHEMA = {
     energy: { type: "string", enum: ["no_change", ...ENERGIES] },
     checkin_in_minutes: { type: "integer", description: "0 = no programar check-in" },
     new_notes: { type: "array", items: { type: "string" } },
+    voice: {
+      type: "string",
+      description: "Descripción completa y actualizada de cómo hablarle a esta persona; vacío si no cambia",
+    },
+    new_routines: { type: "array", items: { type: "string" } },
     settings: {
       type: "object",
       additionalProperties: false,
@@ -96,6 +104,12 @@ export function buildContext(ctx: BrainContext): string {
     `Buenos días a las ${user.morningTime}, cierre a las ${user.eveningTime}, mensajes proactivos: ${user.proactive ? "sí" : "no"}`,
     `Completadas hoy: ${doneToday}`,
   ];
+  const c = countryFromPhone(user.phone);
+  lines.push(
+    `Pista por su número de teléfono: ${c ? `${c.country} → ${c.dialect}` : "no se sabe"} (si ella dice de dónde es o escribe con otros modismos, eso manda)`,
+    `Cómo hablarle (lo que ya aprendiste): ${user.voice || "(todavía nada: empieza cercana, como amiga, y copia su forma de escribir)"}`,
+  );
+  if (user.routines.length) lines.push("Sus rutinas:", ...user.routines.map((r) => `- ${r}`));
   if (user.notes.length) lines.push("Lo que sabes de la persona:", ...user.notes.map((n) => `- ${n}`));
   const focusIndex = items.findIndex((i) => i.id === user.focusItemId);
   if (items.length === 0) {
@@ -171,6 +185,8 @@ export function normalizeOutput(raw: unknown): BrainOutput {
     energy: (["no_change", ...ENERGIES] as string[]).includes(o.energy) ? o.energy : "no_change",
     checkin_in_minutes: Math.min(int(o.checkin_in_minutes), 24 * 60),
     new_notes: strArr(o.new_notes).map((n) => n.trim()).filter(Boolean),
+    voice: str(o.voice).slice(0, 600),
+    new_routines: strArr(o.new_routines).map((n) => n.trim()).filter(Boolean),
     settings: {
       name: str(s.name),
       timezone: str(s.timezone),

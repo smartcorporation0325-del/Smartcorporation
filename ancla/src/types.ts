@@ -15,6 +15,8 @@ export interface User {
   energy: Energy;
   focusItemId: string | null; // "tu 1 cosa" de hoy
   notes: string[]; // cosas que Ancla aprendió de la persona
+  voice: string; // cómo hablarle (dialecto, confianza, modismos, emojis); lo mantiene el modelo
+  routines: string[]; // rutinas y hábitos observados
   lastInboundAt: string | null; // ISO; para la ventana de 24 h de WhatsApp
   lastMorningDate: string | null; // "YYYY-MM-DD" local del último buenos días enviado
   lastEveningDate: string | null; // "YYYY-MM-DD" local del último cierre enviado
@@ -65,6 +67,8 @@ export interface BrainOutput {
   energy: Energy | "no_change";
   checkin_in_minutes: number; // 0 = no programar
   new_notes: string[];
+  voice: string; // "" = sin cambio
+  new_routines: string[];
   settings: {
     name: string;
     timezone: string;
