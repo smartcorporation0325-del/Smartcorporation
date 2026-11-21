@@ -10,6 +10,8 @@ import { MemoryStore } from "../src/store/memory.ts";
 import { localParts, localToIso, whenPhrase } from "../src/time.ts";
 import type { BrainOutput, User } from "../src/types.ts";
 import { ConsoleSender, parseWebhook, verifySignature } from "../src/whatsapp.ts";
+import { privacyHtml } from "../src/privacy.ts";
+import { createApp } from "../src/server.ts";
 
 /** Cerebro falso: devuelve lo que el test le diga y recuerda el contexto que recibió. */
 class FakeBrain implements Brain {
@@ -449,4 +451,24 @@ test("el contexto incluye perfil, gente, recordatorios, lo de hoy y lo observado
   assert.match(ctx, /Lo que ella te dijo hoy \(con hora\):\n- 08:42 después del almuerzo llamo al dentista/);
   assert.doesNotMatch(ctx, /mensaje de ayer/);
   assert.match(ctx, /distracted — viendo reels/);
+});
+
+test("la política de privacidad se sirve en /privacy y escapa el correo", async () => {
+  const html = privacyHtml("Ancla", 'yo@example.com"><script>x</script>');
+  assert.doesNotMatch(html, /<script>x/);
+  assert.match(html, /mailto:yo@example\.com/);
+  assert.match(html, /\/olvidar todo/);
+
+  const { deps } = setup();
+  const server = createApp(deps).listen(0);
+  try {
+    await new Promise((r) => server.once("listening", r));
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://127.0.0.1:${port}/privacy`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get("content-type") ?? "", /text\/html/);
+    assert.match(await res.text(), /Política de privacidad de Ancla/);
+  } finally {
+    server.close();
+  }
 });

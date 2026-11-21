@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { handleInbound, runTick, type AppDeps } from "./app.ts";
 import { ClaudeBrain } from "./brain.ts";
 import { config } from "./config.ts";
+import { privacyHtml } from "./privacy.ts";
 import { MemoryStore } from "./store/memory.ts";
 import { SupabaseStore } from "./store/supabase.ts";
 import { parseWebhook, verifySignature, WhatsAppSender } from "./whatsapp.ts";
@@ -70,6 +71,13 @@ export function createApp(deps: AppDeps) {
         }
         const sent = await runTick(deps);
         res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ sent }));
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/privacy") {
+        res
+          .writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
+          .end(privacyHtml(config.privacyOperator, config.privacyContactEmail));
         return;
       }
 

@@ -34,6 +34,10 @@ export const config = {
   // Mensajes proactivos
   cronSecret: env("CRON_SECRET"),
   internalCron: env("INTERNAL_CRON", "false") === "true",
+  // Política de privacidad pública (/privacy)
+  privacyOperator: env("PRIVACY_OPERATOR", "Ancla"),
+  privacyContactEmail: env("PRIVACY_CONTACT_EMAIL"),
+
   defaultTimezone: env("DEFAULT_TIMEZONE", "America/Mexico_City"),
   defaultMorningTime: env("DEFAULT_MORNING_TIME", "08:30"),
   defaultEveningTime: env("DEFAULT_EVENING_TIME", "21:00"),
