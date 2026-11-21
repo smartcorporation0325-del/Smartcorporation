@@ -167,6 +167,51 @@ Métricas secundarias: retención a 4 semanas y "¿te sentiste peor o mejor cont
 
 **Nuestro diferenciador:** *el único asistente que te busca a ti, te conoce, te ayuda a EMPEZAR y nunca te hace sentir mal.* Y está en español primero.
 
+### 7b. "Más que una app": un cerebro con muchos cuerpos
+
+Como Muse, el producto es **un asistente**, no una app. Hay un solo "cerebro" central y varios "cuerpos" por donde te habla:
+
+```
+            ┌───────────── CEREBRO (nuestro backend) ─────────────┐
+            │ Memoria de ti · Perfil TDA (qué te activa, cuánto    │
+            │ tardas, tu energía) · Motor proactivo (cuándo        │
+            │ hablarte) · Agentes (Claude API) · Tono/personaje    │
+            └──────────────────────────┬──────────────────────────┘
+        ┌──────────┬──────────┬────────┴───┬──────────┬──────────┐
+     WhatsApp    App móvil   Voz (llamada) Aparato   Reloj / lentes
+                                           "Ancla"   (futuro)
+```
+
+**Qué tiene que ser difícil de copiar (el foso):**
+1. **Especialización en TDA:** está diseñado para *empezar*, *sentir el tiempo* y *regular la emoción*. La competencia se queda en *organizar*.
+2. **Proactividad con criterio:** sabe cuándo hablarte y cuándo callarse. Ese "cuándo" se aprende con datos de uso: es el activo más valioso.
+3. **Memoria y perfil personal:** tus tiempos reales, tus patrones de energía y lo que a ti te activa. Cuanto más lo usas, mejor funciona y más cuesta irse.
+4. **Omnicanal:** el mismo compañero en WhatsApp, por voz y en un aparato. Ninguna app de TDA hace esto.
+5. **Español y Latinoamérica primero.** Casi toda la competencia está en inglés.
+6. **Personaje propio:** un "amigo" con nombre y personalidad, no un chatbot genérico.
+7. **Modelo de negocio alineado:** cobramos por ayudarte, no por tu atención. Privacidad fuerte.
+8. **Comunidad:** body doubling grupal con otras personas con TDA.
+
+## 7c. Costos estimados (orden de magnitud, nov 2026)
+
+**IA por usuario activo al mes** (≈30 interacciones al día; los mensajes simples los resuelve un modelo barato y los desgloses o el razonamiento uno mejor):
+- Claude Haiku 5.5 para clasificar y responder cosas simples: $0.10/$0.50 por millón de tokens (entrada/salida) → centavos al mes.
+- Claude Sonnet 5.5 para desgloses, planes y tono: $2/$10 por millón; con caché del prompt, ≈ $1–2 al mes.
+- **Total de IA ≈ $1.5–4 por usuario al mes.**
+- Transcripción de audios ≈ $0.5–1. La voz en tiempo real (modo acompañante) cuesta más: es lo que más hay que vigilar.
+- Mensajes proactivos de WhatsApp (plantillas): unos centavos cada uno, según el país; ≈ $1–3 al mes.
+- **≈ $3–8 por usuario al mes en total**, así que una suscripción de $8–15 al mes deja margen.
+
+**Construir:**
+| Etapa | Tiempo | Costo aproximado |
+|---|---|---|
+| MVP en WhatsApp (1 dev + Claude Code) | 4–8 semanas | Infra < $100/mes + tu tiempo, o ~$5–15k con un freelancer |
+| App + voz + memoria (equipo de 2–3) | 3–6 meses | ~$30–100k (equipo en Latinoamérica) |
+| Prototipos de hardware (10–20 a mano) | 1–2 meses | $30–80 por unidad + diseño 3D |
+| Hardware en serie (diseño industrial, moldes, certificaciones FCC/CE, inventario) | 9–18 meses | $100k+ (a menudo con Kickstarter) |
+
+**No entrenamos un modelo propio:** Meta gastó miles de millones en Muse, pero nosotros alquilamos la inteligencia por API. Lo difícil no es la tecnología, sino el **producto**: acertar con la proactividad, el tono, la memoria y la retención.
+
 ---
 
 ## 8. Riesgos y preguntas abiertas
