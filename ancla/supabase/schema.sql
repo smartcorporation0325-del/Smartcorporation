@@ -77,6 +77,20 @@ create table if not exists ancla_inbound_ids (
   created_at timestamptz not null default now()
 );
 
+-- El bot entra con la service role key desde el servidor. En los proyectos nuevos de Supabase las
+-- tablas no se exponen a la API automáticamente, así que se le da acceso explícito, y solo a ese rol
+-- (anon y authenticated no pueden leer nada). En un Postgres sin ese rol, este bloque no hace nada.
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant usage on schema public to service_role;
+    grant select, insert, update, delete on
+      ancla_users, ancla_items, ancla_messages, ancla_inbound_ids, ancla_reminders, ancla_observations
+      to service_role;
+    grant usage, select on all sequences in schema public to service_role;
+  end if;
+end $$;
+
 alter table ancla_users enable row level security;
 alter table ancla_items enable row level security;
 alter table ancla_messages enable row level security;
