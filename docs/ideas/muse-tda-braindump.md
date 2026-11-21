@@ -1,0 +1,179 @@
+# Brain dump: un "Muse" para cerebros con TDA
+
+> Idea: un asistente de IA al estilo de Meta Muse / Meta AI, pero diseñado desde cero
+> para personas con TDA/TDAH (ADD/ADHD). Documento vivo, sin filtro. Fecha: 2026-11-21.
+
+---
+
+## 1. Qué es Muse (lo que copiamos y lo que no)
+
+**Muse Spark** es el primer modelo de Meta Superintelligence Labs (abril 2026) y es el que mueve a Meta AI.
+
+| Característica de Muse | ¿Nos sirve para TDA? |
+|---|---|
+| **Modos Instant / Thinking / Contemplating** (varios agentes razonan en paralelo) | Sí, pero escondido. El usuario no debería elegir el modo: elegirlo ya es una decisión más. |
+| **Voz natural**: puedes interrumpir, cambiar de tema o de idioma a mitad de frase | **Clave.** Así habla un cerebro con TDA. Hablar cuesta menos que escribir. |
+| **Multimodal**: entiende fotos (p. ej. calorías de un plato) | Sí: foto del escritorio, del refri, de una carta del banco → "esto es lo que hay que hacer". |
+| **Visuales interactivos** (desgloses, tarjetas) | Sí: el texto largo agota; mejor tarjetas, barras y colores. |
+| **Vive donde ya estás**: WhatsApp, Instagram, Messenger y lentes Ray-Ban Meta | **Clave.** Una app que tienes que acordarte de abrir no funciona con TDA. |
+| **Side chats** en grupos y subagentes en paralelo | Sí: "body doubling" grupal y agentes que se encargan de lo aburrido. |
+| Integración social y de compras, feed de recomendaciones | **No.** Más estímulos = más distracción. Hacemos lo contrario. |
+
+**La tesis:** Muse está hecho para *tenerte enganchado*. El nuestro tiene que *sacarte de la app* y llevarte a hacer las cosas.
+
+---
+
+## 2. Cómo funciona un cerebro con TDA (lo que dice la investigación)
+
+1. **Funciones ejecutivas.** Los modelos neurocognitivos ven como núcleo el déficit en funciones ejecutivas, sobre todo en la inhibición de respuestas, con la corteza prefrontal y el circuito prefrontal-estriado implicados. Las funciones ejecutivas son planear, empezar, priorizar, cambiar de tarea y frenar impulsos.
+2. **Dopamina y noradrenalina.** La hipótesis de la dopamina tiene apoyo, pero se discute; también hay evidencia del sistema noradrenérgico. Una lectura útil para producto: el problema no es "falta de voluntad", sino que **la recompensa lejana no se siente**.
+3. **Sistema nervioso basado en el interés** (William Dodson; es un marco clínico, no algo demostrado). Lo que activa a la persona no es *importancia* sino **I-N-C-U**:
+   - **I**nterés · **N**ovedad · **C**ompetencia/reto · **U**rgencia.
+   Este es nuestro motor de diseño.
+4. **Ceguera temporal** (Russell Barkley). Cuesta sentir, seguir y estimar el tiempo. Solo existe "ahora" y "no ahora".
+5. **Memoria de trabajo limitada.** Los planes no se sostienen en la cabeza, así que hay que **sacarlos afuera**.
+6. **Desregulación emocional.** Frustración y ansiedad frente a las tareas → evitación → culpa → más evitación. Encaja aquí la sensibilidad al rechazo (RSD).
+7. **Hiperfoco.** El reverso: cuando algo engancha, se pierde la noción de todo lo demás, incluso de comer.
+8. **Body doubling.** Trabajar acompañado, aunque sea en virtual, ayuda a empezar y a seguir. Puede ayudar también con la soledad.
+
+**Hueco de mercado:** según un preprint de arXiv (2026), las apps de productividad optimizan *terminar* tareas, pero casi no ayudan a **empezar**, a **estimar el tiempo** ni a **regular la emoción**. Ahí entramos.
+
+---
+
+## 3. Principios de diseño (no negociables)
+
+- **Cero fricción de captura.** Un botón, una nota de voz o un audio por WhatsApp. Nada de formularios.
+- **Proactivo, no reactivo.** La IA te busca a ti en el momento justo; no esperamos a que abras la app.
+- **Una sola cosa a la vez.** Nunca mostrar una lista de 47 pendientes. Mostrar *la siguiente acción*.
+- **Sin culpa.** Nada de rachas que se rompen ni de "llevas 3 días sin...". Reiniciar siempre es gratis.
+- **El tiempo se ve.** Barras que se vacían, sonidos, "te quedan 2 canciones".
+- **Dopamina honesta.** Recompensas reales y variadas (novedad), pero sin trucos adictivos tipo feed.
+- **Elegir por ti.** "¿Qué quieres hacer?" paraliza. Mejor "Propongo X. ¿Va?" (sí, no, otra).
+- **Tono:** amigo cómplice, no coach militar ni terapeuta. Humor, pocas palabras y ningún sermón.
+- **No es tratamiento médico.** Complementa terapia y medicación, no las sustituye.
+
+---
+
+## 4. Funciones (brain dump crudo)
+
+### Núcleo: "vaciar la cabeza"
+- **Brain dump por voz:** hablas 3 minutos sin orden y la IA lo convierte en tareas, ideas, preocupaciones y citas. Pregunta lo mínimo.
+- **Bandeja "¿esto qué es?":** todo lo capturado queda sin clasificar y la IA lo ordena después, sin pedirte que decidas al momento.
+- **Foto → acción:** foto de una carta, una factura o un cuarto desordenado → "3 pasos, el primero toma 2 minutos".
+
+### Empezar (el problema número uno)
+- **Paso ridículamente pequeño:** "No limpies la cocina. Solo lleva un vaso al fregadero."
+- **Desglose automático** con nivel de "picante" ajustable (inspirado en Goblin Tools, pero con contexto tuyo).
+- **Botón "estoy atascado/a":** la IA pregunta *por qué* (aburrido, abrumador, no sé por dónde, me da miedo) y responde distinto en cada caso.
+- **Gamificar con I-N-C-U:** convertir tareas en retos ("¿puedes contestar 5 correos antes de que acabe esta canción?"), meter novedad o crear urgencia falsa pero amable.
+
+### Tiempo
+- **Estimador realista:** aprende cuánto *te* tardas de verdad ("dices 10 min; históricamente te toma 35").
+- **Cuenta regresiva de salida:** "Para llegar a las 3, sales a las 2:20, te bañas a la 1:40 y empiezas a vestirte YA."
+- **Alertas de hiperfoco:** "Llevas 2 h 40 min en esto. ¿Comiste? ¿Tenías algo a las 4?"
+- **Timers visuales y sonoros**, no solo números.
+
+### Body doubling con IA
+- **Modo "acompáñame":** la IA se queda "presente" por voz o en pantalla y hace check-ins suaves cada X minutos.
+- **Salas grupales** (tipo side chat de Muse): gente con TDA trabajando juntos en silencio, con la IA moderando.
+- **Integración con lentes** a futuro: "¿sigues en la tarea?" sin sacar el teléfono.
+
+### Emociones
+- **Check-in de energía y ánimo** de un toque: el plan del día se adapta (con energía baja → tareas fáciles y tiempos cortos).
+- **Primeros auxilios para la abrumación:** respiración, reducir el plan a 1 cosa y validar.
+- **Reencuadre de la culpa:** "Hoy hiciste 4 cosas. Ayer cero. Eso es infinito por ciento más."
+- **Asistente de RSD:** ayuda a releer un mensaje que "suena a que están enojados conmigo".
+
+### Memoria externa ("segundo cerebro")
+- **"¿Dónde dejé...?"** y "¿qué le prometí a Juan?". Recuerda lo que le contaste.
+- **Recordatorios por contexto**, no solo por hora: "cuando llegues al súper", "cuando abras la laptop".
+- **Resumen del día** sin juicio y con "mañana empiezas por esto".
+
+### Agentes que hacen lo aburrido (los "Contemplating" de Muse, aplicados aquí)
+- Redactar el correo difícil, llenar el formulario, comparar 3 opciones y decidir por ti si se lo pides.
+- Pagar o recordar facturas antes del recargo (el "impuesto TDA").
+- Llamar o reservar citas (más adelante, con permisos).
+
+---
+
+## 5. Dónde vive el producto (canales)
+
+1. **WhatsApp primero.** Es el canal que ya se abre 100 veces al día, sobre todo en Latinoamérica. MVP por WhatsApp Business API.
+2. **App móvil** para timers visuales, body doubling y vista del día.
+3. **Widget o pantalla de bloqueo:** "tu siguiente paso es...".
+4. **Web o escritorio** para sesiones de trabajo.
+5. Futuro: **smartwatch** (vibración háptica para la ceguera temporal) y lentes.
+
+---
+
+## 6. MVP en 4–6 semanas (propuesta)
+
+**Hipótesis a validar:** *"Si capturar es tan fácil como mandar un audio y la IA me dice el primer paso pequeño, empiezo más tareas."*
+
+1. Bot de WhatsApp: audio o texto → la IA lo transcribe, clasifica y guarda.
+2. Cada mañana: "Tu 1 cosa de hoy + el primer paso" (elegido por la IA, con opción de cambiar).
+3. Botón "atascado/a" → microdesglose.
+4. Check-ins de body doubling ("¿empezaste? 👀") a la hora que elijas.
+5. Resumen nocturno sin culpa.
+
+**Métrica estrella:** número de *tareas iniciadas* por semana, no completadas.
+Métricas secundarias: retención a 4 semanas y "¿te sentiste peor o mejor contigo?" (1–5).
+
+### Stack posible
+- **LLM:** la API de Claude para razonar, desglosar y mantener el tono; un modelo pequeño o rápido para clasificar.
+- **Voz:** transcripción (Whisper o similar) y TTS para el modo acompañante.
+- **Backend:** Next.js + Supabase (el mismo stack que ya usamos en este repo), colas o cron para los mensajes proactivos.
+- **Canal:** WhatsApp Business API (Meta Cloud API o Twilio).
+- **Memoria:** Postgres + pgvector en Supabase para "recordar lo que me contaste".
+
+---
+
+## 7. Competencia y diferenciador
+
+| App | Qué hace bien | Qué le falta |
+|---|---|---|
+| Goblin Tools | Desglose de tareas, microherramientas simples | No te conoce, no es proactiva, no tiene memoria |
+| Tiimo | Planner visual, rutinas, timers | Es una app más que hay que abrir; planificar ya cuesta |
+| Saner.ai | Hub de notas, tareas, calendario y correo con IA | Orientado a "organizar"; poca regulación emocional |
+| Focusmate | Body doubling con humanos | Requiere agendar; nada de IA ni de captura |
+| Meta AI / Muse | Voz, multimodal, está en WhatsApp | Genérico, hecho para enganchar, no entiende TDA |
+
+**Nuestro diferenciador:** *el único asistente que te busca a ti, te conoce, te ayuda a EMPEZAR y nunca te hace sentir mal.* Y está en español primero.
+
+---
+
+## 8. Riesgos y preguntas abiertas
+
+- **Notificaciones:** ser proactivo sin volverse ruido que se ignora. ¿Cómo aprende el ritmo de cada persona?
+- **Novedad que se gasta:** con TDA todo deja de ser interesante en 2–3 semanas. ¿Cómo rotar mecánicas?
+- **Privacidad:** guardamos pensamientos íntimos. Hace falta cifrado y transparencia, y no vender datos jamás (otro contraste con Meta).
+- **Límites clínicos:** no diagnosticar y detectar señales de crisis para derivar a ayuda profesional.
+- **Dependencia de WhatsApp:** políticas de Meta, costos por conversación y plantillas aprobadas.
+- **Modelo de negocio:** ¿freemium? ¿B2B (empresas, universidades, coaches de TDA)? ¿Aliados con psiquiatras?
+- **Nombre:** ¿"Chispa"? ¿"Ahora"? ¿"Foco"? ¿"Ancla"? ¿"Copiloto"? (tiene que ser nuestro, no parecido a Muse).
+
+---
+
+## 9. Siguientes pasos sugeridos
+
+1. Entrevistar a 10 personas con TDA: ¿cuál es su peor momento del día?
+2. Prototipo "mago de Oz": tú haces de bot por WhatsApp durante una semana con 3–5 amigos.
+3. Definir la voz y el tono del asistente (5 ejemplos de mensajes buenos y 5 malos).
+4. Construir el MVP del bot de WhatsApp (sección 6).
+
+---
+
+## Fuentes
+
+- Meta — [Introducing Muse Spark](https://about.fb.com/news/2026/04/introducing-muse-spark-meta-superintelligence-labs/)
+- [Tom's Guide — I tried Muse Spark](https://www.tomsguide.com/ai/i-tried-muse-spark-heres-what-you-need-to-know-about-metas-new-ai-model)
+- [DataCamp — Muse Spark](https://www.datacamp.com/blog/muse-spark) · [Zapier — Meta AI Muse Spark](https://zapier.com/blog/meta-ai-muse-spark/) · [TechRadar review](https://www.techradar.com/ai-platforms-assistants/i-tried-metas-new-muse-spark-ai-model-and-it-feels-like-chatgpt-built-for-the-social-internet)
+- [Frontiers in Psychiatry — revisión dopamina/noradrenalina en TDAH](https://www.frontiersin.org/journals/psychiatry/articles/10.3389/fpsyt.2024.1492126/full)
+- [PMC — funciones ejecutivas en TDAH](https://pmc.ncbi.nlm.nih.gov/articles/PMC9548548) · [PMC 11604610](https://pmc.ncbi.nlm.nih.gov/articles/PMC11604610/)
+- [Landmark College — The neuroscience of ADHD](https://www.landmark.edu/research-and-training/blog/the-neuroscience-of-adhd)
+- [Neurodivergent Insights — Interest-based nervous system](https://neurodivergentinsights.com/adhd-motivation/)
+- [Psychology Today — Dopamine and ADHD](https://www.psychologytoday.com/us/blog/clinical-psychology-perspectives/202512/whats-the-deal-with-dopamine-and-adhd)
+- [Understood — ADHD and time blindness](https://www.understood.org/en/articles/adhd-time-blindness) · [Simply Psychology — Time blindness](https://www.simplypsychology.org/adhd-time-blindness.html)
+- [arXiv 2603.17258 — apoyo a adultos con TDAH (preprint 2026)](https://arxiv.org/html/2603.17258v1)
+- [ADD.org — ADHD tools for adults](https://add.org/adhd-tools-for-adults/)
+- [Saner.ai — neurodivergent apps](https://www.saner.ai/blogs/best-neurodivergent-apps-for-adults) (fuente comercial) · [ClickUp — AI tools for neurodivergent people](https://clickup.com/blog/ai-tools-for-neurodivergent-people/)
