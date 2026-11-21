@@ -1,0 +1,103 @@
+import { config } from "./config.ts";
+import { getOrCreateUser, runTurn, type Deps } from "./handler.ts";
+import { dueEvent, withinServiceWindow } from "./scheduler.ts";
+import { localParts } from "./time.ts";
+import { transcribe } from "./transcribe.ts";
+import type { TurnInput, User } from "./types.ts";
+import { downloadMedia, type InboundMessage, type Sender } from "./whatsapp.ts";
+
+export interface AppDeps extends Deps {
+  sender: Sender;
+  /** Se puede sustituir en tests/simulador. */
+  fetchMedia?: typeof downloadMedia;
+  transcribeAudio?: typeof transcribe;
+  log?: (msg: string) => void;
+}
+
+// Procesa en orden los mensajes de una misma persona (evita carreras si manda 3 seguidos).
+const queues = new Map<string, Promise<unknown>>();
+function serialize<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = queues.get(key) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  queues.set(key, next.catch(() => {}));
+  return next;
+}
+
+const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
+export async function handleInbound(deps: AppDeps, msg: InboundMessage): Promise<void> {
+  if (!(await deps.store.claimInboundMessage(msg.id))) return; // reintento de Meta: ya lo procesamos
+  await serialize(msg.from, async () => {
+    const user = await getOrCreateUser(deps.store, msg.from, msg.profileName);
+    const fetchMedia = deps.fetchMedia ?? downloadMedia;
+    const transcribeAudio = deps.transcribeAudio ?? transcribe;
+
+    let input: TurnInput;
+    let historyText: string;
+    if (msg.type === "text") {
+      input = { type: "message", text: msg.text };
+      historyText = msg.text;
+    } else if (msg.type === "audio") {
+      const media = await fetchMedia(msg.mediaId);
+      const text = await transcribeAudio(media.data, media.mimeType);
+      if (text === null) {
+        await deps.sender.sendText(msg.from, "Todavía no puedo escuchar audios 🙈 ¿Me lo mandas escrito, aunque sea desordenado?");
+        return;
+      }
+      input = { type: "message", text: `(audio transcrito) ${text}` };
+      historyText = `(audio) ${text}`;
+    } else if (msg.type === "image") {
+      const media = await fetchMedia(msg.mediaId);
+      if (!IMAGE_TYPES.has(media.mimeType)) {
+        await deps.sender.sendText(msg.from, "No pude abrir esa imagen. ¿Me mandas una foto normal (JPG o PNG)?");
+        return;
+      }
+      input = {
+        type: "message",
+        text: msg.caption,
+        image: { mediaType: media.mimeType, base64: media.data.toString("base64") },
+      };
+      historyText = `(foto) ${msg.caption}`.trim();
+    } else {
+      await deps.sender.sendText(msg.from, "Por ahora entiendo texto, audios y fotos. ¿Me lo cuentas por ahí?");
+      return;
+    }
+
+    const reply = await runTurn(deps, user, input, historyText);
+    await deps.sender.sendText(msg.from, reply);
+  });
+}
+
+/** Revisa a todas las personas y manda los mensajes proactivos que toquen. Llamar cada ~10 min. */
+export async function runTick(deps: AppDeps, now = deps.now?.() ?? new Date()): Promise<number> {
+  const users = await deps.store.listUsers();
+  let sent = 0;
+  for (const user of users) {
+    const ev = dueEvent(user, now);
+    if (!ev) continue;
+    try {
+      await serialize(user.phone, () => sendProactive(deps, user, ev, now));
+      sent++;
+    } catch (err) {
+      deps.log?.(`tick ${user.phone} ${ev}: ${(err as Error).message}`);
+    }
+  }
+  return sent;
+}
+
+async function sendProactive(deps: AppDeps, user: User, ev: "morning" | "evening" | "checkin", now: Date) {
+  // Marcar primero para no mandar duplicados si algo falla a medias.
+  const today = localParts(now, user.timezone).date;
+  const mark: Partial<User> =
+    ev === "morning" ? { lastMorningDate: today } : ev === "evening" ? { lastEveningDate: today } : { checkinAt: null };
+  const fresh = await deps.store.updateUser(user.id, mark);
+
+  const inWindow = withinServiceWindow(fresh, now);
+  if (!inWindow && !config.whatsappTemplateName) {
+    deps.log?.(`tick ${user.phone} ${ev}: fuera de la ventana de 24 h y sin plantilla; se omite`);
+    return;
+  }
+  const reply = await runTurn({ ...deps, now: () => now }, fresh, { type: "event", name: ev });
+  if (inWindow) await deps.sender.sendText(user.phone, reply);
+  else await deps.sender.sendTemplate(user.phone, reply);
+}

@@ -1,0 +1,24 @@
+{
+  "name": "ancla-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ancla: asistente de IA por WhatsApp para personas con TDA (MVP)",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node --experimental-strip-types src/server.ts",
+    "chat": "node --experimental-strip-types scripts/chat.ts",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.12.0",
+    "@supabase/supabase-js": "^2.119.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}
