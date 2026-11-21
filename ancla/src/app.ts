@@ -79,6 +79,7 @@ export async function handleInbound(deps: AppDeps, msg: InboundMessage): Promise
 
     const reply = await runTurn(deps, user, input, historyText);
     await deps.sender.sendText(msg.from, reply);
+    deps.log?.(`respuesta enviada (${reply.length} caracteres)`);
   });
 }
 

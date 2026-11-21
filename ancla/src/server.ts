@@ -43,11 +43,19 @@ export function createApp(deps: AppDeps) {
       if (req.method === "POST" && url.pathname === "/webhook") {
         const raw = await readBody(req);
         if (!verifySignature(raw, req.headers["x-hub-signature-256"] as string | undefined, config.whatsappAppSecret)) {
+          log("webhook RECHAZADO: la firma no coincide (revisa que WHATSAPP_APP_SECRET sea la clave secreta de la app)");
           res.writeHead(401).end("bad signature");
           return;
         }
         res.writeHead(200).end("ok"); // responder rápido; Meta reintenta si tardamos
-        for (const msg of parseWebhook(JSON.parse(raw.toString("utf8")))) {
+        const incoming = parseWebhook(JSON.parse(raw.toString("utf8")));
+        // Solo tipos y cantidad: nunca el contenido ni el número de la persona.
+        log(
+          incoming.length
+            ? `webhook recibido: ${incoming.length} mensaje(s) [${incoming.map((m) => m.type).join(", ")}]`
+            : "webhook recibido: sin mensajes (estado de entrega u otro evento)",
+        );
+        for (const msg of incoming) {
           handleInbound(deps, msg).catch((err) => log(`mensaje ${msg.id}: ${(err as Error).message}`));
         }
         return;
