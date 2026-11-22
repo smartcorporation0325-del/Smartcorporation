@@ -11,6 +11,8 @@ import { localParts, localToIso, whenPhrase } from "../src/time.ts";
 import type { BrainOutput, User } from "../src/types.ts";
 import { ConsoleSender, parseWebhook, verifySignature } from "../src/whatsapp.ts";
 import { privacyHtml } from "../src/privacy.ts";
+import { cleanQuickReplies } from "../src/quickReplies.ts";
+import { SYSTEM_PROMPT } from "../src/prompt.ts";
 import { createApp } from "../src/server.ts";
 
 /** Cerebro falso: devuelve lo que el test le diga y recuerda el contexto que recibió. */
@@ -494,4 +496,46 @@ test("si la transcripción falla, viene vacía o el audio es enorme, responde co
   assert.match(sender.sent.at(-1)!.text, /muy largo/);
 
   assert.equal(brain.calls.length, 0);
+});
+
+test("los botones de respuesta rápida se limpian, llegan con el mensaje y al tocarlos entran como texto", async () => {
+  assert.deepEqual(cleanQuickReplies([" Ya empecé ", "ya empecé", "", 5, "Una etiqueta demasiado larga", "Más tarde", "Otra"]), [
+    "Ya empecé",
+    "Una etiqueta demasia",
+    "Más tarde",
+  ]);
+  assert.deepEqual(cleanQuickReplies("no es lista"), []);
+  assert.deepEqual(normalizeOutput({ reply: "x", quick_replies: ["Va", "va"] }).quick_replies, ["Va"]);
+  assert.deepEqual(normalizeOutput({ reply: "x" }).quick_replies, []);
+  assert.match(SYSTEM_PROMPT, /quick_replies/);
+
+  const { deps, brain, sender } = setup();
+  brain.next = { reply: "¿Empiezas por la luz?", quick_replies: ["Va", "Otra cosa", "Hoy no"] };
+  await handleInbound(deps, textMsg("q1", "hola"));
+  assert.deepEqual(sender.sent[0], { to: "521555", text: "¿Empiezas por la luz?", template: false, buttons: ["Va", "Otra cosa", "Hoy no"] });
+
+  // Sin botones sigue saliendo como texto simple
+  brain.next = { reply: "Aquí estoy" };
+  await handleInbound(deps, textMsg("q2", "gracias"));
+  assert.deepEqual(sender.sent[1], { to: "521555", text: "Aquí estoy", template: false });
+
+  // Lo que llega cuando ella toca un botón
+  const parsed = parseWebhook({
+    entry: [{ changes: [{ value: { messages: [
+      { id: "b1", from: "521555", type: "interactive", interactive: { type: "button_reply", button_reply: { id: "qr1", title: "Ya empecé" } } },
+    ] } }] }],
+  });
+  assert.deepEqual(parsed, [{ id: "b1", from: "521555", profileName: "", type: "text", text: "Ya empecé" }]);
+});
+
+test("los mensajes que Ancla manda por su cuenta también llevan botones dentro de la ventana de 24 h", async () => {
+  const now = new Date("2026-11-23T14:40:00Z");
+  const { deps, store, sender, brain } = setup(now);
+  const user = await getOrCreateUser(store, "5215551");
+  await store.updateUser(user.id, { lastInboundAt: "2026-11-23T02:00:00Z" });
+  brain.next = { reply: "Buenos días. Tu 1 cosa: la luz. ¿Va?", quick_replies: ["Va", "Otra cosa"] };
+  await runTick(deps, now);
+  assert.deepEqual(sender.sent, [
+    { to: "5215551", text: "Buenos días. Tu 1 cosa: la luz. ¿Va?", template: false, buttons: ["Va", "Otra cosa"] },
+  ]);
 });

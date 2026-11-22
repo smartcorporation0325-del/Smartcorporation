@@ -16,7 +16,10 @@ const sender = new ConsoleSender();
 const deps: AppDeps = { store, brain: new ClaudeBrain(), sender, log: console.error };
 
 const flush = () => {
-  for (const m of sender.sent.splice(0)) console.log(`\n\x1b[36mAncla:\x1b[0m ${m.text}\n`);
+  for (const m of sender.sent.splice(0)) {
+    const buttons = m.buttons?.length ? `\n${m.buttons.map((b) => `\x1b[7m ${b} \x1b[0m`).join("  ")}` : "";
+    console.log(`\n\x1b[36mAncla:\x1b[0m ${m.text}${buttons}\n`);
+  }
 };
 
 console.log(`Simulador de Ancla. Escribe como en WhatsApp.
@@ -45,7 +48,9 @@ while (true) {
       "/checkin": "checkin",
     };
     if (events[line]) {
-      await sender.sendText(PHONE, await runTurn(deps, user, { type: "event", name: events[line] }));
+      const turn = await runTurn(deps, user, { type: "event", name: events[line] });
+      if (turn.quickReplies.length) await sender.sendButtons(PHONE, turn.reply, turn.quickReplies);
+      else await sender.sendText(PHONE, turn.reply);
     } else {
       await handleInbound(deps, { id: `sim-${n++}`, from: PHONE, profileName: "", type: "text", text: line });
     }

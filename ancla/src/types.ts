@@ -77,6 +77,7 @@ export interface BrainOutput {
   observation: { activity: string; state: ActivityState; note: string }; // activity "" = nada que anotar
   people: Person[];
   profile: string; // "" = sin cambio
+  quick_replies: string[]; // 0 a 3 botones de respuesta rápida para que ella toque en vez de escribir
   settings: {
     name: string;
     timezone: string;

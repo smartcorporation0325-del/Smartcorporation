@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { config } from "./config.ts";
+import { cleanQuickReplies } from "./quickReplies.ts";
 
 // Cliente mínimo de la WhatsApp Cloud API (Meta). Documentación:
 // https://developers.facebook.com/docs/whatsapp/cloud-api
@@ -8,6 +9,8 @@ export interface Sender {
   sendText(to: string, text: string): Promise<void>;
   /** Plantilla aprobada con un parámetro {{1}}; necesaria fuera de la ventana de 24 h. */
   sendTemplate(to: string, param: string): Promise<void>;
+  /** Mensaje con hasta 3 botones de respuesta rápida (solo dentro de la ventana de 24 h). */
+  sendButtons(to: string, body: string, buttons: string[]): Promise<void>;
 }
 
 export type InboundMessage =
@@ -70,6 +73,25 @@ export class WhatsAppSender implements Sender {
     await this.post({ to, type: "text", text: { body: text.slice(0, 4096) } });
   }
 
+  async sendButtons(to: string, body: string, buttons: string[]) {
+    const titles = cleanQuickReplies(buttons);
+    // WhatsApp limita el cuerpo con botones a 1024 caracteres: si no cabe, va como texto normal.
+    if (titles.length === 0 || body.length > 1024) return this.sendText(to, body);
+    try {
+      await this.post({
+        to,
+        type: "interactive",
+        interactive: {
+          type: "button",
+          body: { text: body },
+          action: { buttons: titles.map((title, i) => ({ type: "reply", reply: { id: `qr${i + 1}`, title } })) },
+        },
+      });
+    } catch {
+      await this.sendText(to, body); // si Meta rechaza los botones, que el mensaje no se pierda
+    }
+  }
+
   async sendTemplate(to: string, param: string) {
     await this.post({
       to,
@@ -96,11 +118,15 @@ export async function downloadMedia(mediaId: string): Promise<{ data: Buffer; mi
 
 /** Sender de consola para el simulador y los tests. */
 export class ConsoleSender implements Sender {
-  sent: { to: string; text: string; template: boolean }[] = [];
+  sent: { to: string; text: string; template: boolean; buttons?: string[] }[] = [];
   async sendText(to: string, text: string) {
     this.sent.push({ to, text, template: false });
   }
   async sendTemplate(to: string, param: string) {
     this.sent.push({ to, text: param, template: true });
+  }
+  async sendButtons(to: string, body: string, buttons: string[]) {
+    const titles = cleanQuickReplies(buttons);
+    this.sent.push(titles.length ? { to, text: body, template: false, buttons: titles } : { to, text: body, template: false });
   }
 }

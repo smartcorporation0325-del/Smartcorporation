@@ -36,7 +36,13 @@ export async function getOrCreateUser(store: Store, phone: string, profileName =
  * Un turno completo: arma contexto → pregunta al cerebro → aplica cambios → guarda historial.
  * Devuelve el texto a enviar por WhatsApp (el envío lo hace quien llama).
  */
-export async function runTurn(deps: Deps, user: User, input: TurnInput, userText?: string): Promise<string> {
+/** Lo que Ancla le va a mandar a la persona: el texto y, si aplica, botones de respuesta rápida. */
+export interface TurnResult {
+  reply: string;
+  quickReplies: string[];
+}
+
+export async function runTurn(deps: Deps, user: User, input: TurnInput, userText?: string): Promise<TurnResult> {
   const now = deps.now?.() ?? new Date();
   const { store } = deps;
 
@@ -56,7 +62,7 @@ export async function runTurn(deps: Deps, user: User, input: TurnInput, userText
     await store.addMessage({ userId: user.id, role: "user", text: userText ?? input.text });
   }
   await store.addMessage({ userId: user.id, role: "assistant", text: out.reply });
-  return out.reply;
+  return { reply: out.reply, quickReplies: out.quick_replies };
 }
 
 export async function applyOutput(

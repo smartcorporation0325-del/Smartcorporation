@@ -1,5 +1,5 @@
 import { config } from "./config.ts";
-import { consolidate, getOrCreateUser, runTurn, type Deps } from "./handler.ts";
+import { consolidate, getOrCreateUser, runTurn, type Deps, type TurnResult } from "./handler.ts";
 import { dueEvent, dueReminders, withinServiceWindow, type DueEvent } from "./scheduler.ts";
 import { localParts } from "./time.ts";
 import { transcribe } from "./transcribe.ts";
@@ -21,6 +21,13 @@ function serialize<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const next = prev.then(fn, fn);
   queues.set(key, next.catch(() => {}));
   return next;
+}
+
+/** Entrega la respuesta: plantilla fuera de la ventana de 24 h; dentro, con botones si los hay. */
+async function deliver(deps: AppDeps, to: string, turn: TurnResult, inWindow = true) {
+  if (!inWindow) return deps.sender.sendTemplate(to, turn.reply);
+  if (turn.quickReplies.length > 0) return deps.sender.sendButtons(to, turn.reply, turn.quickReplies);
+  return deps.sender.sendText(to, turn.reply);
 }
 
 // Las notas de voz normales pesan unos cientos de KB; esto evita pagar por audios enormes.
@@ -95,9 +102,9 @@ export async function handleInbound(deps: AppDeps, msg: InboundMessage): Promise
       return;
     }
 
-    const reply = await runTurn(deps, user, input, historyText);
-    await deps.sender.sendText(msg.from, reply);
-    deps.log?.(`respuesta enviada (${reply.length} caracteres)`);
+    const turn = await runTurn(deps, user, input, historyText);
+    await deliver(deps, msg.from, turn);
+    deps.log?.(`respuesta enviada (${turn.reply.length} caracteres, ${turn.quickReplies.length} botones)`);
   });
 }
 
@@ -143,9 +150,8 @@ async function sendProactive(deps: AppDeps, user: User, ev: DueEvent, now: Date,
     return;
   }
   const input: TurnInput = ev === "reminder" ? { type: "event", name: "reminder", reminders } : { type: "event", name: ev };
-  const reply = await runTurn(turnDeps, fresh, input);
+  const turn = await runTurn(turnDeps, fresh, input);
   // Si el cerebro falla antes de llegar aquí, el recordatorio sigue pendiente y se reintenta en el próximo tick.
   if (ev === "reminder") await deps.store.setReminderStatus(reminders.map((r) => r.id), "sent");
-  if (inWindow) await deps.sender.sendText(user.phone, reply);
-  else await deps.sender.sendTemplate(user.phone, reply);
+  await deliver(deps, user.phone, turn, inWindow);
 }

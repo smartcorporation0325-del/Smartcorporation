@@ -29,6 +29,12 @@ Todo esto lo usa para proponerte cosas a la hora en que rindes mejor y adelantar
 
 **No es entrenar un modelo:** son notas que se guardan y se le pasan a Claude en cada mensaje. **Para que se conserven entre sesiones hace falta Supabase** (en el simulador se borran al salir). Si ya habías creado las tablas, vuelve a correr `supabase/schema.sql` completo.
 
+## Botones de respuesta rápida
+Cuando tiene sentido (una propuesta, un check-in, un recordatorio), Ancla ofrece hasta 3 botones ("Ya empecé", "10 min más", "Me atasqué") para tocar en vez de escribir. Al tocarlos le llegan como si hubieras escrito esas palabras. Solo funcionan dentro de las 24 h de la última vez que escribiste; fuera de eso se usa la plantilla. Si Meta rechaza los botones, el mensaje sale como texto normal. En el simulador (`npm run chat`) se ven como etiquetas resaltadas.
+
+## Plan
+Lo hecho y lo que falta para llegar al producto final: [`ROADMAP.md`](./ROADMAP.md).
+
 ## Cómo está hecho
 
 ```

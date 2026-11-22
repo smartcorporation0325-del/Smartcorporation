@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config.ts";
 import { countryFromPhone } from "./dialect.ts";
+import { cleanQuickReplies } from "./quickReplies.ts";
 import { CONSOLIDATE_PROMPT, SYSTEM_PROMPT } from "./prompt.ts";
 import { localParts, whenPhrase } from "./time.ts";
 import { ACTIVITY_STATES, type BrainOutput, type ChatMessage, type Item, type Observation, type Reminder, type TurnInput, type User } from "./types.ts";
@@ -61,6 +62,7 @@ export const OUTPUT_SCHEMA = {
     "observation",
     "people",
     "profile",
+    "quick_replies",
     "settings",
   ],
   properties: {
@@ -128,6 +130,11 @@ export const OUTPUT_SCHEMA = {
     profile: {
       type: "string",
       description: "Quién es ella, reescrito completo; vacío si no cambia",
+    },
+    quick_replies: {
+      type: "array",
+      items: { type: "string" },
+      description: "0 a 3 botones de respuesta rápida, máximo 20 caracteres cada uno, sin género; vacío si no aplican",
     },
     settings: {
       type: "object",
@@ -308,6 +315,7 @@ export function normalizeOutput(raw: unknown): BrainOutput {
       .slice(0, 10)
       .map((p: any) => ({ name: p.name.trim().slice(0, 60), relation: str(p.relation).slice(0, 60), note: str(p.note).slice(0, 300) })),
     profile: str(o.profile).slice(0, 1500),
+    quick_replies: cleanQuickReplies(o.quick_replies),
     new_routines: strArr(o.new_routines).map((n) => n.trim()).filter(Boolean),
     settings: {
       name: str(s.name),
