@@ -20,7 +20,7 @@ Un prototipo que funciona para una persona: recibe mensajes por WhatsApp, respon
 
 ## Etapa 1: que te sirva de verdad a ti
 Usarla unos 7 días y anotar qué sirve y qué molesta. Es lo que más mejora el producto.
-- [ ] Conectar notas de voz (Groq u OpenAI: 3 variables en Render) y probar con una nota real
+- [x] Notas de voz de entrada: conectadas con Groq y probadas con una nota real de WhatsApp (formato OGG aceptado)
 - [ ] Borrar la llave vieja de Claude del Codespace y detener el Codespace
 - [ ] Plantilla de WhatsApp aprobada por Meta, para escribir pasadas 24 h sin que hables
 - [ ] Plan de pago en Render (el gratis se duerme y a veces tarda en responder)
@@ -33,7 +33,7 @@ Usarla unos 7 días y anotar qué sirve y qué molesta. Es lo que más mejora el
 - [ ] Estimador real de tiempos: medir inicio y fin y decir "dices 10 min, te toma 35"
 - [ ] Modo "acompáñame": sesión de trabajo con check-ins suaves
 - [ ] Conectar Google Calendar (hoy solo sabe lo que le dices)
-- [ ] Respuestas en nota de voz
+- [ ] Respuestas en nota de voz (elegir servicio de voz; probar acento y formato)
 - [ ] Corregir su memoria ("eso no es así") y resumen semanal de "esto aprendí de ti"
 - [ ] Horas de silencio y pausa ("no me escribas hoy")
 
