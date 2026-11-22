@@ -32,6 +32,9 @@ Todo esto lo usa para proponerte cosas a la hora en que rindes mejor y adelantar
 ## Botones de respuesta rápida
 Cuando tiene sentido (una propuesta, un check-in, un recordatorio), Ancla ofrece hasta 3 botones ("Ya empecé", "10 min más", "Me atasqué") para tocar en vez de escribir. Al tocarlos le llegan como si hubieras escrito esas palabras. Solo funcionan dentro de las 24 h de la última vez que escribiste; fuera de eso se usa la plantilla. Si Meta rechaza los botones, el mensaje sale como texto normal. En el simulador (`npm run chat`) se ven como etiquetas resaltadas.
 
+## Bienvenida y ayuda
+La primera vez que escribe un número nuevo, Ancla manda una bienvenida corta (quién es, qué puede hacer, que no es un servicio médico, cómo se cuidan los datos y `/olvidar todo`) con los botones **Empezar** y **¿Qué puedes hacer?**. Después responde normal, sin volver a presentarse. Los comandos `/ayuda` y `/privacidad` responden al instante con texto fijo, sin gastar IA. Además, el modelo enseña como mucho un dato útil por día y solo cuando viene al caso. La dirección pública para el enlace de privacidad sale sola de `RENDER_EXTERNAL_URL` (o de `PUBLIC_URL`).
+
 ## Plan
 Lo hecho y lo que falta para llegar al producto final: [`ROADMAP.md`](./ROADMAP.md).
 

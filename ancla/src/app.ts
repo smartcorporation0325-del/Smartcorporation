@@ -1,5 +1,6 @@
 import { config } from "./config.ts";
-import { consolidate, getOrCreateUser, runTurn, type Deps, type TurnResult } from "./handler.ts";
+import { consolidate, findOrCreateUser, runTurn, type Deps, type TurnResult } from "./handler.ts";
+import { helpText, matchCommand, privacyText, welcomeText, WELCOME_BUTTONS } from "./onboarding.ts";
 import { dueEvent, dueReminders, withinServiceWindow, type DueEvent } from "./scheduler.ts";
 import { localParts } from "./time.ts";
 import { transcribe } from "./transcribe.ts";
@@ -38,28 +39,43 @@ const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif
 export async function handleInbound(deps: AppDeps, msg: InboundMessage): Promise<void> {
   if (!(await deps.store.claimInboundMessage(msg.id))) return; // reintento de Meta: ya lo procesamos
   await serialize(msg.from, async () => {
-    const user = await getOrCreateUser(deps.store, msg.from, msg.profileName);
+    const { user, created } = await findOrCreateUser(deps.store, msg.from, msg.profileName);
+    // Bienvenida solo a números nuevos y solo si su primer mensaje no es un comando.
+    const firstContact = created && !(msg.type === "text" && matchCommand(msg.text));
+    if (firstContact) {
+      const welcome = welcomeText();
+      await deps.sender.sendButtons(msg.from, welcome, WELCOME_BUTTONS);
+      await deps.store.addMessage({ userId: user.id, role: "assistant", text: welcome });
+    }
     const fetchMedia = deps.fetchMedia ?? downloadMedia;
     const transcribeAudio = deps.transcribeAudio ?? transcribe;
 
     let input: TurnInput;
     let historyText: string;
     if (msg.type === "text") {
+      const cmd = matchCommand(msg.text);
+      if (cmd === "help") {
+        await deps.sender.sendText(msg.from, helpText());
+        return;
+      }
+      if (cmd === "privacy") {
+        await deps.sender.sendText(msg.from, privacyText());
+        return;
+      }
       // Control de privacidad: borrar todo lo que Ancla sabe de ella (pide confirmación).
-      const cmd = msg.text.trim().toLowerCase();
-      if (cmd === "/olvidar") {
+      if (cmd === "forget") {
         await deps.sender.sendText(
           msg.from,
           "Si quieres que me olvide de todo lo que sé de ti (tus rutinas, la gente que me has contado, tus notas, recordatorios, pendientes y nuestro historial), escribe /olvidar todo. No se puede deshacer. Si no, aquí seguimos igual.",
         );
         return;
       }
-      if (cmd === "/olvidar todo") {
+      if (cmd === "forget-all") {
         await deps.store.wipeUserData(user.id);
         await deps.sender.sendText(msg.from, "Listo, borré todo lo que sabía de ti. Cuando quieras empezamos de cero.");
         return;
       }
-      input = { type: "message", text: msg.text };
+      input = { type: "message", text: msg.text, ...(firstContact && { firstContact: true }) };
       historyText = msg.text;
     } else if (msg.type === "audio") {
       const media = await fetchMedia(msg.mediaId);
@@ -83,7 +99,7 @@ export async function handleInbound(deps: AppDeps, msg: InboundMessage): Promise
         await deps.sender.sendText(msg.from, "No alcancé a entender nada en ese audio. ¿Me lo repites o me lo escribes?");
         return;
       }
-      input = { type: "message", text: `(audio transcrito) ${text}` };
+      input = { type: "message", text: `(audio transcrito) ${text}`, ...(firstContact && { firstContact: true }) };
       historyText = `(audio) ${text}`;
     } else if (msg.type === "image") {
       const media = await fetchMedia(msg.mediaId);
@@ -94,6 +110,7 @@ export async function handleInbound(deps: AppDeps, msg: InboundMessage): Promise
       input = {
         type: "message",
         text: msg.caption,
+        ...(firstContact && { firstContact: true }),
         image: { mediaType: media.mimeType, base64: media.data.toString("base64") },
       };
       historyText = `(foto) ${msg.caption}`.trim();

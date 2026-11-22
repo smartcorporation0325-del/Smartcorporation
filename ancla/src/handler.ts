@@ -21,15 +21,24 @@ export interface Deps {
   now?: () => Date;
 }
 
-export async function getOrCreateUser(store: Store, phone: string, profileName = ""): Promise<User> {
+export async function findOrCreateUser(
+  store: Store,
+  phone: string,
+  profileName = "",
+): Promise<{ user: User; created: boolean }> {
   const existing = await store.getUserByPhone(phone);
-  if (existing) return existing;
-  return store.createUser(phone, {
+  if (existing) return { user: existing, created: false };
+  const user = await store.createUser(phone, {
     name: profileName,
     timezone: countryFromPhone(phone)?.timezone ?? config.defaultTimezone,
     morningTime: config.defaultMorningTime,
     eveningTime: config.defaultEveningTime,
   });
+  return { user, created: true };
+}
+
+export async function getOrCreateUser(store: Store, phone: string, profileName = ""): Promise<User> {
+  return (await findOrCreateUser(store, phone, profileName)).user;
 }
 
 /**

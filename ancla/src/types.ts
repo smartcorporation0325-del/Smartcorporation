@@ -49,7 +49,7 @@ export interface ChatMessage {
 
 /** Lo que dispara un turno de Ancla: un mensaje de la persona o un evento del sistema. */
 export type TurnInput =
-  | { type: "message"; text: string; image?: { mediaType: string; base64: string } }
+  | { type: "message"; text: string; image?: { mediaType: string; base64: string }; firstContact?: boolean }
   | { type: "event"; name: "morning" | "evening" | "checkin" }
   | { type: "event"; name: "reminder"; reminders: Reminder[] };
 

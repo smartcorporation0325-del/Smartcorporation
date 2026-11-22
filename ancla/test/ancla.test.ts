@@ -12,6 +12,7 @@ import type { BrainOutput, User } from "../src/types.ts";
 import { ConsoleSender, parseWebhook, verifySignature } from "../src/whatsapp.ts";
 import { privacyHtml } from "../src/privacy.ts";
 import { cleanQuickReplies } from "../src/quickReplies.ts";
+import { helpText, matchCommand, privacyText, welcomeText, WELCOME_BUTTONS } from "../src/onboarding.ts";
 import { SYSTEM_PROMPT } from "../src/prompt.ts";
 import { createApp } from "../src/server.ts";
 
@@ -54,7 +55,10 @@ test("brain dump: guarda pendientes y responde", async () => {
   };
   await handleInbound(deps, textMsg("m1", "tengo que pagar la luz y me preocupa la junta"));
 
-  assert.deepEqual(sender.sent, [{ to: "521555", text: "Guardé 2 cosas.", template: false }]);
+  // Es un número nuevo: primero la bienvenida (con botones) y luego la respuesta
+  assert.equal(sender.sent.length, 2);
+  assert.deepEqual(sender.sent[0].buttons, ["Empezar", "¿Qué puedes hacer?"]);
+  assert.deepEqual(sender.sent[1], { to: "521555", text: "Guardé 2 cosas.", template: false });
   const user = (await store.getUserByPhone("521555"))!;
   assert.equal(user.name, "Ana");
   const items = await store.listActiveItems(user.id);
@@ -63,7 +67,7 @@ test("brain dump: guarda pendientes y responde", async () => {
   assert.equal(items[1].estimateMinutes, null);
   assert.equal(user.focusItemId, items[0].id);
   assert.ok(user.lastInboundAt);
-  assert.equal((await store.recentMessages(user.id, 10)).length, 2);
+  assert.equal((await store.recentMessages(user.id, 10)).length, 3, "bienvenida + mensaje + respuesta");
 });
 
 test("mensajes duplicados de Meta se procesan una sola vez", async () => {
@@ -167,6 +171,7 @@ test("tick: manda el buenos días una sola vez y no escribe fuera de la ventana 
 
 test("audio sin transcripción configurada pide texto", async () => {
   const { deps, sender, brain } = setup();
+  await getOrCreateUser(deps.store, "521555");
   deps.fetchMedia = async () => ({ data: Buffer.from("x"), mimeType: "audio/ogg" });
   deps.transcribeAudio = async () => null;
   await handleInbound(deps, { id: "a1", from: "521555", profileName: "", type: "audio", mediaId: "m" });
@@ -176,6 +181,7 @@ test("audio sin transcripción configurada pide texto", async () => {
 
 test("audio transcrito y foto llegan al cerebro", async () => {
   const { deps, brain } = setup();
+  await getOrCreateUser(deps.store, "521555");
   deps.fetchMedia = async (id) =>
     id === "aud" ? { data: Buffer.from("x"), mimeType: "audio/ogg" } : { data: Buffer.from("img"), mimeType: "image/jpeg" };
   deps.transcribeAudio = async () => "tengo mil cosas";
@@ -510,6 +516,7 @@ test("los botones de respuesta rápida se limpian, llegan con el mensaje y al to
   assert.match(SYSTEM_PROMPT, /quick_replies/);
 
   const { deps, brain, sender } = setup();
+  await getOrCreateUser(deps.store, "521555");
   brain.next = { reply: "¿Empiezas por la luz?", quick_replies: ["Va", "Otra cosa", "Hoy no"] };
   await handleInbound(deps, textMsg("q1", "hola"));
   assert.deepEqual(sender.sent[0], { to: "521555", text: "¿Empiezas por la luz?", template: false, buttons: ["Va", "Otra cosa", "Hoy no"] });
@@ -538,4 +545,70 @@ test("los mensajes que Ancla manda por su cuenta también llevan botones dentro 
   assert.deepEqual(sender.sent, [
     { to: "5215551", text: "Buenos días. Tu 1 cosa: la luz. ¿Va?", template: false, buttons: ["Va", "Otra cosa"] },
   ]);
+});
+
+test("primer contacto: bienvenida con botones, el modelo no se presenta de nuevo, y la segunda vez ya no hay bienvenida", async () => {
+  const { deps, brain, sender, store } = setup();
+  brain.next = { reply: "Cuéntame qué traes en la cabeza." };
+  await handleInbound(deps, textMsg("n1", "hola"));
+  assert.equal(sender.sent.length, 2);
+  assert.equal(sender.sent[0].buttons?.join("|"), WELCOME_BUTTONS.join("|"));
+  assert.match(sender.sent[0].text, /soy Ancla/);
+  assert.match(sender.sent[0].text, /Al seguir escribiéndome aceptas/);
+  assert.match(sender.sent[0].text, /\/olvidar todo/);
+  assert.equal(sender.sent[1].text, "Cuéntame qué traes en la cabeza.");
+  assert.ok(brain.calls[0].input.type === "message" && brain.calls[0].input.firstContact === true);
+  const user = (await store.getUserByPhone("521555"))!;
+  assert.equal((await store.recentMessages(user.id, 10))[0].role, "assistant", "la bienvenida queda en el historial");
+
+  // El modelo recibe la nota de que ya hubo bienvenida
+  assert.match(JSON.stringify(buildMessages(brain.calls[0])), /PRIMER mensaje/);
+
+  await handleInbound(deps, textMsg("n2", "tengo que pagar la luz"));
+  assert.equal(sender.sent.length, 3, "solo la respuesta, sin otra bienvenida");
+  assert.ok(brain.calls[1].input.type === "message" && !("firstContact" in brain.calls[1].input));
+});
+
+test("/ayuda y /privacidad responden al instante sin llamar al modelo; 'ayuda' a secas no es un comando", async () => {
+  assert.equal(matchCommand("/ayuda"), "help");
+  assert.equal(matchCommand("¿Qué puedes hacer?"), "help");
+  assert.equal(matchCommand("/Privacidad"), "privacy");
+  assert.equal(matchCommand("/olvidar todo"), "forget-all");
+  assert.equal(matchCommand("ayuda"), null, "alguien en apuro merece una respuesta humana, no un manual");
+  assert.equal(matchCommand("necesito ayuda con mi tarea"), null);
+
+  const { deps, brain, sender, store } = setup();
+  await handleInbound(deps, textMsg("c1", "/ayuda")); // primer mensaje y es comando: sin bienvenida
+  assert.equal(sender.sent.length, 1);
+  assert.match(sender.sent[0].text, /Vaciar la cabeza/);
+  assert.match(sender.sent[0].text, /\/privacidad/);
+  assert.ok(await store.getUserByPhone("521555"), "igual se crea la persona");
+  await handleInbound(deps, textMsg("c2", "¿Qué puedes hacer?"));
+  await handleInbound(deps, textMsg("c3", "/privacidad"));
+  assert.match(sender.sent[2].text, /No los vendo/);
+  assert.equal(brain.calls.length, 0, "los comandos no gastan IA");
+
+  await handleInbound(deps, textMsg("c4", "ayuda"));
+  assert.equal(brain.calls.length, 1, "'ayuda' va al modelo");
+});
+
+test("los textos de bienvenida y ayuda caben en un mensaje con botones y dicen la verdad sobre los audios", () => {
+  assert.ok(welcomeText("https://ejemplo.onrender.com").length < 1024);
+  assert.ok(welcomeText("").length < 1024);
+  assert.match(welcomeText("https://ejemplo.onrender.com"), /https:\/\/ejemplo\.onrender\.com\/privacy/);
+  assert.match(welcomeText(""), /escribe \/privacidad/);
+  assert.match(privacyText("https://ejemplo.onrender.com"), /ejemplo\.onrender\.com\/privacy/);
+  assert.doesNotMatch(privacyText(""), /http/);
+  assert.match(helpText(true), /mándame audios/);
+  assert.doesNotMatch(helpText(false), /audios/);
+});
+
+test("el contexto le dice al modelo si los audios están disponibles", () => {
+  const ctx = buildContext({
+    user: baseUser(), items: [], history: [], reminders: [], observations: [], doneToday: 0,
+    now: new Date("2026-11-23T14:40:00Z"), input: { type: "message", text: "hola" },
+  });
+  assert.match(ctx, /Audios: NO disponibles todavía/);
+  assert.match(SYSTEM_PROMPT, /PRIMER mensaje/);
+  assert.match(SYSTEM_PROMPT, /UN dato útil por día/);
 });

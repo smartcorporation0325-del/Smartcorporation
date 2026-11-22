@@ -15,6 +15,7 @@ Un prototipo que funciona para una persona: recibe mensajes por WhatsApp, respon
 - [x] Privacidad básica: página `/privacy`, comando `/olvidar todo`
 - [x] Token permanente de Meta (usuario del sistema)
 - [x] **Botones de respuesta rápida** ("Ya empecé", "10 min más", "Me atasqué")
+- [x] **Bienvenida y ayuda:** mensaje de bienvenida para números nuevos, `/ayuda`, `/privacidad`, y un dato útil por día mientras se usa
 
 ## Etapa 1: que te sirva de verdad a ti
 Usarla unos 7 días y anotar qué sirve y qué molesta. Es lo que más mejora el producto.
@@ -37,7 +38,8 @@ Usarla unos 7 días y anotar qué sirve y qué molesta. Es lo que más mejora el
 ## Etapa 3: prepararla para otras personas
 Aquí hay decisiones que son de la dueña del producto, no solo técnicas.
 - [ ] **Número de WhatsApp real.** El de prueba solo permite 5 destinatarios. Hay que registrar un número propio, verificar el negocio con Meta y asumir el costo por conversación
-- [ ] Registro de nuevas personas: bienvenida, consentimiento, país, horarios
+- [ ] Registro de nuevas personas: hoy la bienvenida dice "al seguir escribiéndome aceptas…" (consentimiento implícito); falta un consentimiento explícito revisado por un profesional, y preguntar país y horarios
+- [ ] Recordar qué datos útiles ya se le enseñaron a cada persona (hoy el modelo lo deduce del historial reciente; guardarlo exige un cambio en la base)
 - [ ] Términos de uso y política de privacidad completas (revisión profesional)
 - [ ] Revisión clínica del tono y del protocolo de crisis
 - [ ] Robustez para varias personas: cola de mensajes que sobreviva a reinicios (hoy vive en memoria y exige **una sola instancia**), límites de uso, monitoreo y copias de seguridad

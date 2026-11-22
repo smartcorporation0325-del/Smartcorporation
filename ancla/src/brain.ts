@@ -180,6 +180,7 @@ export function buildContext(ctx: BrainContext): string {
     `Energía reportada: ${user.energy}`,
     `Buenos días a las ${user.morningTime}, cierre a las ${user.eveningTime}, mensajes proactivos: ${user.proactive ? "sí" : "no"}`,
     `Completadas hoy: ${doneToday}`,
+    `Audios: ${config.transcribeUrl ? "activados (los recibes ya transcritos)" : "NO disponibles todavía"}`,
   ];
   const c = countryFromPhone(user.phone);
   lines.push(
@@ -255,6 +256,12 @@ export function buildMessages(ctx: BrainContext): Anthropic.Beta.BetaMessagePara
   if (ctx.input.type === "event") {
     content.push({ type: "text", text: eventText(ctx.input, ctx) });
   } else {
+    if (ctx.input.firstContact) {
+      content.push({
+        type: "text",
+        text: "NOTA: es el PRIMER mensaje de esta persona. Ya recibió la bienvenida, así que no te presentes otra vez.",
+      });
+    }
     if (ctx.input.image) {
       content.push({
         type: "image",
