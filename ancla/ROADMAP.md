@@ -15,6 +15,7 @@ Un prototipo que funciona para una persona: recibe mensajes por WhatsApp, respon
 - [x] Privacidad básica: página `/privacy`, comando `/olvidar todo`
 - [x] Token permanente de Meta (usuario del sistema)
 - [x] **Botones de respuesta rápida** ("Ya empecé", "10 min más", "Me atasqué")
+- [x] **Modos rápido, normal y "Piénsalo bien"** (el modo se elige solo; el modelo rápido es opcional y se compara con los registros)
 - [x] **Bienvenida y ayuda:** mensaje de bienvenida para números nuevos, `/ayuda`, `/privacidad`, y un dato útil por día mientras se usa
 
 ## Etapa 1: que te sirva de verdad a ti
@@ -25,6 +26,7 @@ Usarla unos 7 días y anotar qué sirve y qué molesta. Es lo que más mejora el
 - [ ] Plan de pago en Render (el gratis se duerme y a veces tarda en responder)
 - [ ] Aviso cuando el servidor falle
 - [ ] Cambiar `CRON_SECRET` por una clave aleatoria nueva (opcional)
+- [ ] Comparar un modelo más rápido para el modo rápido: poner `ANTHROPIC_FAST_MODEL` en Render, usar Ancla unos días y mirar las líneas `turno:` de los registros (tiempo y tokens) junto con cómo suena
 
 ## Etapa 2: mejoras para TDA (por orden de impacto)
 - [x] Botones de respuesta rápida

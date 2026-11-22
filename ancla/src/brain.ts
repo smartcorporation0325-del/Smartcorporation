@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config.ts";
 import { countryFromPhone } from "./dialect.ts";
+import { MODE_LABEL, planFor, type Mode } from "./modes.ts";
 import { cleanQuickReplies } from "./quickReplies.ts";
 import { CONSOLIDATE_PROMPT, SYSTEM_PROMPT } from "./prompt.ts";
 import { localParts, whenPhrase } from "./time.ts";
@@ -15,6 +16,7 @@ export interface BrainContext {
   doneToday: number;
   reminders: Reminder[]; // recordatorios pendientes; su posición define la ref (r1 = reminders[0])
   observations: Observation[]; // lo observado en los últimos días
+  mode?: Mode; // cuánto razonar en esta respuesta (por defecto, normal)
 }
 
 /** El "cerebro": decide qué responder y qué cambios hacer. Se puede sustituir en tests. */
@@ -180,6 +182,7 @@ export function buildContext(ctx: BrainContext): string {
     `Energía reportada: ${user.energy}`,
     `Buenos días a las ${user.morningTime}, cierre a las ${user.eveningTime}, mensajes proactivos: ${user.proactive ? "sí" : "no"}`,
     `Completadas hoy: ${doneToday}`,
+    `Modo de esta respuesta: ${MODE_LABEL[ctx.mode ?? "normal"]}`,
     `Audios: ${config.transcribeUrl ? "activados (los recibes ya transcritos)" : "NO disponibles todavía"}`,
   ];
   const c = countryFromPhone(user.phone);
@@ -341,26 +344,37 @@ export function emptyOutput(reply: string): BrainOutput {
 /** Implementación con Claude: una llamada por turno con salida estructurada (JSON Schema). */
 export class ClaudeBrain implements Brain {
   private client: Anthropic;
+  private log?: (msg: string) => void;
 
-  constructor(client = new Anthropic()) {
+  constructor(client = new Anthropic(), log?: (msg: string) => void) {
     this.client = client;
+    this.log = log;
   }
 
   async think(ctx: BrainContext): Promise<BrainOutput> {
+    const mode = ctx.mode ?? "normal";
+    const plan = planFor(mode);
+    // Haiku no tiene respaldo del lado del servidor: ahí se omite (con otros modelos, si un filtro de
+    // seguridad rechaza la petición, la API la reintenta sola en el modelo de respaldo).
+    const withFallback = !/haiku/i.test(plan.model);
+    const started = Date.now();
     const response = await this.client.beta.messages.create({
-      model: config.model,
-      max_tokens: 8000,
-      // Si un clasificador de seguridad rechaza la petición, la API reintenta en el modelo
-      // de respaldo recomendado por Anthropic dentro de la misma llamada.
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
+      model: plan.model,
+      max_tokens: plan.maxTokens,
+      ...(withFallback ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
       system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
       messages: buildMessages(ctx),
       output_config: {
-        effort: config.effort,
+        effort: plan.effort,
         format: { type: "json_schema", schema: OUTPUT_SCHEMA as unknown as Record<string, unknown> },
       },
     });
+    // Solo cifras y nombres: nunca el contenido ni datos de la persona. Sirve para comparar modos.
+    this.log?.(
+      `turno: modo=${mode} modelo=${plan.model} esfuerzo=${plan.effort} ${Date.now() - started}ms ` +
+        `entrada=${response.usage.input_tokens} salida=${response.usage.output_tokens} ` +
+        `cache=${response.usage.cache_read_input_tokens ?? 0}`,
+    );
 
     if (response.stop_reason === "refusal") {
       return emptyOutput("Eso no lo puedo ayudar a hacer, pero aquí sigo para lo demás. ¿Qué traes en la cabeza?");

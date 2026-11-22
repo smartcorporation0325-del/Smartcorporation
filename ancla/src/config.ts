@@ -10,6 +10,10 @@ export const config = {
   // Claude
   model: env("ANTHROPIC_MODEL", "claude-opus-5-5"),
   effort: env("ANTHROPIC_EFFORT", "low") as "low" | "medium" | "high",
+  // Modos de respuesta (ver src/modes.ts). Vacío = usar el modelo principal.
+  fastModel: env("ANTHROPIC_FAST_MODEL"),
+  deepModel: env("ANTHROPIC_DEEP_MODEL"),
+  deepEffort: env("ANTHROPIC_DEEP_EFFORT", "high") as "medium" | "high" | "xhigh" | "max",
 
   // WhatsApp Cloud API (Meta)
   whatsappToken: env("WHATSAPP_TOKEN"),

@@ -1,5 +1,6 @@
 import type { Brain } from "./brain.ts";
 import { config } from "./config.ts";
+import { chooseMode, type Mode } from "./modes.ts";
 import { countryFromPhone } from "./dialect.ts";
 import type { Store } from "./store/index.ts";
 import { isValidTime, isValidTimeZone, localMidnightIso, localToIso } from "./time.ts";
@@ -51,7 +52,13 @@ export interface TurnResult {
   quickReplies: string[];
 }
 
-export async function runTurn(deps: Deps, user: User, input: TurnInput, userText?: string): Promise<TurnResult> {
+export async function runTurn(
+  deps: Deps,
+  user: User,
+  input: TurnInput,
+  userText?: string,
+  mode: Mode = chooseMode(input),
+): Promise<TurnResult> {
   const now = deps.now?.() ?? new Date();
   const { store } = deps;
 
@@ -64,7 +71,7 @@ export async function runTurn(deps: Deps, user: User, input: TurnInput, userText
     store.listObservationsSince(user.id, since, 40),
   ]);
 
-  const out = await deps.brain.think({ user, items, history, input, now, doneToday, reminders, observations });
+  const out = await deps.brain.think({ user, items, history, input, now, doneToday, reminders, observations, mode });
   await applyOutput(store, user, items, reminders, out, now, input);
 
   if (input.type === "message") {

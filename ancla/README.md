@@ -32,6 +32,14 @@ Todo esto lo usa para proponerte cosas a la hora en que rindes mejor y adelantar
 ## Botones de respuesta rápida
 Cuando tiene sentido (una propuesta, un check-in, un recordatorio), Ancla ofrece hasta 3 botones ("Ya empecé", "10 min más", "Me atasqué") para tocar en vez de escribir. Al tocarlos le llegan como si hubieras escrito esas palabras. Solo funcionan dentro de las 24 h de la última vez que escribiste; fuera de eso se usa la plantilla. Si Meta rechaza los botones, el mensaje sale como texto normal. En el simulador (`npm run chat`) se ven como etiquetas resaltadas.
 
+## Modos de respuesta (rápido, normal y "Piénsalo bien")
+Inspirado en el "Instantáneo" y el "Pensar" de Muse. El modo se elige solo, con reglas simples (sin otra llamada a la IA, así que no suma costo ni demora):
+- **Rápido:** acuses y botones simples ("gracias", "ok", "Ya empecé", "10 min más"). Respuesta de 1 o 2 líneas.
+- **Normal:** la conversación de siempre. Los mensajes que Ancla manda por su cuenta (buenos días, check-ins, recordatorios) van siempre en normal.
+- **Profundo:** cuando tocas el botón **"Piénsalo bien"**, pides planear algo ("ayúdame a planear mi semana") o mandas un desahogo larguísimo (900 caracteres o más). Usa más razonamiento, avisa antes ("Dame un momentito, esto lo quiero pensar bien.") y responde con un plan corto de máximo 5 pasos.
+
+Por defecto **los tres modos usan el mismo modelo**, así que Ancla suena igual que antes. Para probar un modelo más rápido en el modo rápido, en Render agrega `ANTHROPIC_FAST_MODEL` (por ejemplo `claude-sonnet-5-5`) y compara. Cada respuesta deja una línea en los registros, solo con cifras (sin contenido ni teléfonos), por ejemplo `turno: modo=fast modelo=… esfuerzo=low 2310ms entrada=… salida=… cache=…`. Para volver atrás, borra la variable. Otras variables: `ANTHROPIC_DEEP_MODEL` y `ANTHROPIC_DEEP_EFFORT` (por defecto `high`). Haiku no tiene respaldo del lado del servidor y es el que más puede cambiar el tono: compara con cuidado antes de dejarlo.
+
 ## Bienvenida y ayuda
 La primera vez que escribe un número nuevo, Ancla manda una bienvenida corta (quién es, qué puede hacer, que no es un servicio médico, cómo se cuidan los datos y `/olvidar todo`) con los botones **Empezar** y **¿Qué puedes hacer?**. Después responde normal, sin volver a presentarse. Los comandos `/ayuda` y `/privacidad` responden al instante con texto fijo, sin gastar IA. Además, el modelo enseña como mucho un dato útil por día y solo cuando viene al caso. La dirección pública para el enlace de privacidad sale sola de `RENDER_EXTERNAL_URL` (o de `PUBLIC_URL`).
 

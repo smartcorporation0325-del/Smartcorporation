@@ -17,7 +17,7 @@ No es un agente autónomo: no tiene herramientas libres (no navega, no manda cor
 - `npm start`: servidor.
 
 ## Mapa del código
-`prompt.ts` (personalidad y reglas, lo más delicado) · `brain.ts` (llamada a Claude, esquema de salida, contexto) · `handler.ts` (aplica cambios) · `scheduler.ts` (qué mensaje toca a cada hora) · `app.ts` (entrada de mensajes y tick) · `store/` (memoria y Supabase) · `whatsapp.ts` (Cloud API de Meta) · `dialect.ts` (país y zona horaria por prefijo) · `privacy.ts` (página `/privacy`) · `onboarding.ts` (bienvenida, ayuda y comandos fijos) · `supabase/schema.sql`.
+`prompt.ts` (personalidad y reglas, lo más delicado) · `brain.ts` (llamada a Claude, esquema de salida, contexto) · `handler.ts` (aplica cambios) · `scheduler.ts` (qué mensaje toca a cada hora) · `app.ts` (entrada de mensajes y tick) · `store/` (memoria y Supabase) · `whatsapp.ts` (Cloud API de Meta) · `dialect.ts` (país y zona horaria por prefijo) · `privacy.ts` (página `/privacy`) · `onboarding.ts` (bienvenida, ayuda y comandos fijos) · `modes.ts` (modo rápido/normal/profundo según el mensaje) · `supabase/schema.sql`.
 
 ## Reglas del proyecto
 - **Nunca** subir llaves ni tokens. Las variables reales viven en Render (ver `.env.example`).

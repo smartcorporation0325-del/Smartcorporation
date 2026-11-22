@@ -1,5 +1,6 @@
 import { config } from "./config.ts";
 import { consolidate, findOrCreateUser, runTurn, type Deps, type TurnResult } from "./handler.ts";
+import { chooseMode } from "./modes.ts";
 import { helpText, matchCommand, privacyText, welcomeText, WELCOME_BUTTONS } from "./onboarding.ts";
 import { dueEvent, dueReminders, withinServiceWindow, type DueEvent } from "./scheduler.ts";
 import { localParts } from "./time.ts";
@@ -119,7 +120,10 @@ export async function handleInbound(deps: AppDeps, msg: InboundMessage): Promise
       return;
     }
 
-    const turn = await runTurn(deps, user, input, historyText);
+    const mode = chooseMode(input);
+    // El modo profundo tarda más: se avisa para que no parezca que Ancla se quedó callada.
+    if (mode === "deep") await deps.sender.sendText(msg.from, "Dame un momentito, esto lo quiero pensar bien.");
+    const turn = await runTurn(deps, user, input, historyText, mode);
     await deliver(deps, msg.from, turn);
     deps.log?.(`respuesta enviada (${turn.reply.length} caracteres, ${turn.quickReplies.length} botones)`);
   });

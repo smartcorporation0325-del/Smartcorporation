@@ -100,7 +100,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       : new MemoryStore();
   if (store instanceof MemoryStore) log("AVISO: sin Supabase; los datos viven en memoria y se pierden al reiniciar");
 
-  const deps: AppDeps = { store, brain: new ClaudeBrain(), sender: new WhatsAppSender(), log };
+  const deps: AppDeps = { store, brain: new ClaudeBrain(undefined, log), sender: new WhatsAppSender(), log };
   createApp(deps).listen(config.port, () => log(`Ancla escuchando en :${config.port}`));
 
   if (config.internalCron) {

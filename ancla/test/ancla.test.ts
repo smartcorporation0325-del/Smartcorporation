@@ -14,6 +14,7 @@ import { privacyHtml } from "../src/privacy.ts";
 import { cleanQuickReplies } from "../src/quickReplies.ts";
 import { helpText, matchCommand, privacyText, welcomeText, WELCOME_BUTTONS } from "../src/onboarding.ts";
 import { SYSTEM_PROMPT } from "../src/prompt.ts";
+import { chooseMode, normalizeForMode, DEEP_MIN_CHARS } from "../src/modes.ts";
 import { createApp } from "../src/server.ts";
 
 /** Cerebro falso: devuelve lo que el test le diga y recuerda el contexto que recibió. */
@@ -611,4 +612,55 @@ test("el contexto le dice al modelo si los audios están disponibles", () => {
   assert.match(ctx, /Audios: NO disponibles todavía/);
   assert.match(SYSTEM_PROMPT, /PRIMER mensaje/);
   assert.match(SYSTEM_PROMPT, /UN dato útil por día/);
+});
+
+test("el modo se elige sin llamar a la IA: acuses y botones simples → rápido; planes y desahogos largos → profundo", () => {
+  const msg = (text: string, image?: boolean) =>
+    chooseMode({ type: "message", text, ...(image ? { image: { mediaType: "image/png", base64: "x" } } : {}) });
+  for (const t of ["gracias", "¡Gracias!", "ok", "Jajaja 😂", "Ya empecé", "10 min más", "Más tarde", "Hoy no", "Ya lo hice", "hola"]) {
+    assert.equal(msg(t), "fast", t);
+  }
+  for (const t of ["Me atasqué", "Me abruma", "tengo que pagar la luz", "no sé por dónde empezar", "gracias por todo lo de hoy, de verdad"]) {
+    assert.equal(msg(t), "normal", t);
+  }
+  for (const t of ["Piénsalo bien", "piensalo bien!", "Ayúdame a planear mi semana", "Planea mi viernes", "hazme un plan para el informe"]) {
+    assert.equal(msg(t), "deep", t);
+  }
+  assert.equal(msg("x".repeat(DEEP_MIN_CHARS - 1)), "normal");
+  assert.equal(msg("x".repeat(DEEP_MIN_CHARS)), "deep");
+  assert.equal(msg("gracias", true), "normal", "con foto siempre normal");
+  // Los mensajes que Ancla manda por su cuenta nunca van en modo rápido ni profundo
+  assert.equal(chooseMode({ type: "event", name: "morning" }), "normal");
+  assert.equal(chooseMode({ type: "event", name: "checkin" }), "normal");
+  assert.equal(normalizeForMode("  ¡Ya   empecé! 💪 "), "ya empece");
+});
+
+test("modo profundo: avisa que va a pensar y le pasa el modo al modelo; rápido responde sin aviso", async () => {
+  const { deps, brain, sender } = setup();
+  await getOrCreateUser(deps.store, "521555");
+  brain.next = { reply: "Plan: 1) ..." };
+  await handleInbound(deps, textMsg("d1", "Piénsalo bien"));
+  assert.equal(sender.sent.length, 2);
+  assert.match(sender.sent[0].text, /Dame un momentito/);
+  assert.equal(sender.sent[1].text, "Plan: 1) ...");
+  assert.equal(brain.calls[0].mode, "deep");
+
+  await handleInbound(deps, textMsg("d2", "gracias"));
+  assert.equal(sender.sent.length, 3, "rápido: solo la respuesta, sin aviso");
+  assert.equal(brain.calls[1].mode, "fast");
+
+  await handleInbound(deps, textMsg("d3", "tengo que llamar al dentista"));
+  assert.equal(brain.calls[2].mode, "normal");
+});
+
+test("el contexto le dice al modelo en qué modo responde, y el prompt sabe ofrecer 'Piénsalo bien'", () => {
+  const base = {
+    user: baseUser(), items: [], history: [], reminders: [], observations: [], doneToday: 0,
+    now: new Date("2026-11-23T14:40:00Z"), input: { type: "message", text: "hola" } as const,
+  };
+  assert.match(buildContext({ ...base, mode: "deep" }), /Modo de esta respuesta: profundo/);
+  assert.match(buildContext({ ...base, mode: "fast" }), /Modo de esta respuesta: rápido/);
+  assert.match(buildContext(base), /Modo de esta respuesta: normal/);
+  assert.match(SYSTEM_PROMPT, /"Piénsalo bien"/);
+  assert.match(SYSTEM_PROMPT, /máximo 5 pasos/);
 });
