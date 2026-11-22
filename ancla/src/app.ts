@@ -23,6 +23,9 @@ function serialize<T>(key: string, fn: () => Promise<T>): Promise<T> {
   return next;
 }
 
+// Las notas de voz normales pesan unos cientos de KB; esto evita pagar por audios enormes.
+const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
+
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 export async function handleInbound(deps: AppDeps, msg: InboundMessage): Promise<void> {
@@ -53,9 +56,24 @@ export async function handleInbound(deps: AppDeps, msg: InboundMessage): Promise
       historyText = msg.text;
     } else if (msg.type === "audio") {
       const media = await fetchMedia(msg.mediaId);
-      const text = await transcribeAudio(media.data, media.mimeType);
+      if (media.data.byteLength > MAX_AUDIO_BYTES) {
+        await deps.sender.sendText(msg.from, "Ese audio es muy largo para mí. ¿Me lo mandas en partes más cortas?");
+        return;
+      }
+      let text: string | null;
+      try {
+        text = await transcribeAudio(media.data, media.mimeType);
+      } catch (err) {
+        deps.log?.(`transcripción falló: ${(err as Error).message}`);
+        await deps.sender.sendText(msg.from, "No logré escuchar ese audio. ¿Me lo mandas otra vez o me lo escribes?");
+        return;
+      }
       if (text === null) {
         await deps.sender.sendText(msg.from, "Todavía no puedo escuchar audios 🙈 ¿Me lo mandas escrito, aunque sea desordenado?");
+        return;
+      }
+      if (!text) {
+        await deps.sender.sendText(msg.from, "No alcancé a entender nada en ese audio. ¿Me lo repites o me lo escribes?");
         return;
       }
       input = { type: "message", text: `(audio transcrito) ${text}` };

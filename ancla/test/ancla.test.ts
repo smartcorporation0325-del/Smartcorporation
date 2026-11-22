@@ -472,3 +472,26 @@ test("la política de privacidad se sirve en /privacy y escapa el correo", async
     server.close();
   }
 });
+
+test("si la transcripción falla, viene vacía o el audio es enorme, responde con calidez y no llama al modelo", async () => {
+  const { deps, brain, sender } = setup();
+  const audio = (id: string) => ({ id, from: "521555", profileName: "", type: "audio", mediaId: "m" }) as const;
+  deps.fetchMedia = async () => ({ data: Buffer.from("x"), mimeType: "audio/ogg" });
+
+  deps.transcribeAudio = async () => {
+    throw new Error("servicio caído");
+  };
+  await handleInbound(deps, audio("f1"));
+  assert.match(sender.sent.at(-1)!.text, /No logré escuchar/);
+
+  deps.transcribeAudio = async () => "";
+  await handleInbound(deps, audio("f2"));
+  assert.match(sender.sent.at(-1)!.text, /No alcancé a entender/);
+
+  deps.fetchMedia = async () => ({ data: Buffer.alloc(9 * 1024 * 1024), mimeType: "audio/ogg" });
+  deps.transcribeAudio = async () => "no debería llamarse";
+  await handleInbound(deps, audio("f3"));
+  assert.match(sender.sent.at(-1)!.text, /muy largo/);
+
+  assert.equal(brain.calls.length, 0);
+});

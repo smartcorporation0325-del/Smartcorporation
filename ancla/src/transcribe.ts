@@ -16,6 +16,7 @@ export async function transcribe(audio: Buffer, mimeType: string): Promise<strin
     method: "POST",
     headers: config.transcribeApiKey ? { Authorization: `Bearer ${config.transcribeApiKey}` } : {},
     body: form,
+    signal: AbortSignal.timeout(45_000),
   });
   if (!res.ok) throw new Error(`Transcripción ${res.status}: ${await res.text()}`);
   const json = (await res.json()) as { text?: string };
