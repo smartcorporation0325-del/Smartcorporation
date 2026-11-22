@@ -33,7 +33,7 @@ Usarla unos 7 días y anotar qué sirve y qué molesta. Es lo que más mejora el
 - [ ] Estimador real de tiempos: medir inicio y fin y decir "dices 10 min, te toma 35"
 - [ ] Modo "acompáñame": sesión de trabajo con check-ins suaves
 - [ ] Conectar Google Calendar (hoy solo sabe lo que le dices)
-- [ ] Respuestas en nota de voz (elegir servicio de voz; probar acento y formato)
+- [x] Respuestas en nota de voz con OpenAI (código y pruebas hechos; falta probar con una nota real: acento, formato y costo)
 - [ ] Corregir su memoria ("eso no es así") y resumen semanal de "esto aprendí de ti"
 - [ ] Horas de silencio y pausa ("no me escribas hoy")
 

@@ -12,6 +12,7 @@ import type { BrainOutput, User } from "../src/types.ts";
 import { ConsoleSender, parseWebhook, verifySignature } from "../src/whatsapp.ts";
 import { privacyHtml } from "../src/privacy.ts";
 import { cleanQuickReplies } from "../src/quickReplies.ts";
+import { MAX_VOICE_CHARS, speechText, voiceInstructions } from "../src/tts.ts";
 import { helpText, matchCommand, privacyText, welcomeText, WELCOME_BUTTONS } from "../src/onboarding.ts";
 import { SYSTEM_PROMPT } from "../src/prompt.ts";
 import { chooseMode, normalizeForMode, DEEP_MIN_CHARS } from "../src/modes.ts";
@@ -663,4 +664,90 @@ test("el contexto le dice al modelo en qué modo responde, y el prompt sabe ofre
   assert.match(buildContext(base), /Modo de esta respuesta: normal/);
   assert.match(SYSTEM_PROMPT, /"Piénsalo bien"/);
   assert.match(SYSTEM_PROMPT, /máximo 5 pasos/);
+});
+
+test("speechText deja el texto listo para leerse en voz alta, y la voz usa el acento del país", () => {
+  assert.equal(speechText("Hola 🙂 empezamos:\n\n• Abre la app\n- Mira https://ancla.onrender.com/privacy ahora"), "Hola empezamos:\nAbre la app\nMira ahora");
+  assert.match(voiceInstructions({ phone: "584125551" }), /como una amiga cercana.*acento de Venezuela/s);
+  assert.match(voiceInstructions({ phone: "18095551234" }), /acento de República Dominicana/);
+  assert.match(voiceInstructions({ phone: "12125551234" }), /acento latinoamericano neutro/);
+});
+
+test("si te hablan por voz, Ancla responde con nota de voz y los botones van en un mensaje aparte", async () => {
+  const { deps, brain, sender, store } = setup();
+  await getOrCreateUser(store, "584125551");
+  const spoken: { text: string; instructions: string }[] = [];
+  deps.synthesizeSpeech = async (text, instructions) => {
+    spoken.push({ text, instructions });
+    return Buffer.from("ogg");
+  };
+  deps.fetchMedia = async () => ({ data: Buffer.from("x"), mimeType: "audio/ogg" });
+  deps.transcribeAudio = async () => "tengo mil cosas";
+  brain.next = { reply: "Listo, lo ordeno 🙂 ¿Empezamos por la luz?", quick_replies: ["Va", "Otra cosa"] };
+
+  await handleInbound(deps, { id: "v1", from: "584125551", profileName: "", type: "audio", mediaId: "m" });
+
+  assert.deepEqual(sender.sent, [
+    { to: "584125551", text: "(nota de voz)", template: false, voice: true },
+    { to: "584125551", text: "Toca una opción si te sirve:", template: false, buttons: ["Va", "Otra cosa"] },
+  ]);
+  assert.equal(spoken[0].text, "Listo, lo ordeno ¿Empezamos por la luz?");
+  assert.match(spoken[0].instructions, /acento de Venezuela/);
+  const input = brain.calls[0].input;
+  assert.ok(input.type === "message" && input.voiceReply === true, "el modelo sabe que se dirá en voz");
+  assert.match(JSON.stringify(buildMessages(brain.calls[0])), /NOTA DE VOZ/);
+});
+
+test("la voz solo se usa cuando corresponde: texto → texto; respuesta larga, plan profundo o fallo → texto", async () => {
+  const { deps, brain, sender, store } = setup();
+  await getOrCreateUser(store, "584125551");
+  const logs: string[] = [];
+  deps.log = (m) => logs.push(m);
+  let spokenCount = 0;
+  let behavior: "ok" | "throw" | "null" = "ok";
+  deps.synthesizeSpeech = async () => {
+    spokenCount++;
+    if (behavior === "throw") throw new Error("Voz 500");
+    return behavior === "null" ? null : Buffer.from("ogg");
+  };
+  deps.fetchMedia = async () => ({ data: Buffer.from("x"), mimeType: "audio/ogg" });
+  let transcript = "hola";
+  deps.transcribeAudio = async () => transcript;
+  const audio = (id: string) => ({ id, from: "584125551", profileName: "", type: "audio", mediaId: "m" }) as const;
+
+  // 1) escribe → texto, sin llamar a la voz
+  brain.next = { reply: "Hola" };
+  await handleInbound(deps, { id: "t1", from: "584125551", profileName: "", type: "text", text: "hola" });
+  assert.equal(spokenCount, 0);
+  assert.deepEqual(sender.sent.at(-1), { to: "584125551", text: "Hola", template: false });
+
+  // 2) habla pero la respuesta es larga → texto
+  brain.next = { reply: "a".repeat(MAX_VOICE_CHARS + 1) };
+  await handleInbound(deps, audio("t2"));
+  assert.equal(spokenCount, 0);
+  assert.equal(sender.sent.at(-1)!.text.length, MAX_VOICE_CHARS + 1);
+
+  // 3) la voz falla → llega el texto y queda un aviso en el registro (sin contenido)
+  brain.next = { reply: "Sigo aquí" };
+  behavior = "throw";
+  await handleInbound(deps, audio("t3"));
+  assert.deepEqual(sender.sent.at(-1), { to: "584125551", text: "Sigo aquí", template: false });
+  assert.ok(logs.some((l) => l.includes("voz falló, se envía texto: Voz 500")));
+  assert.ok(logs.every((l) => !l.includes("Sigo aquí")));
+
+  // 4) no hay servicio configurado (devuelve null) → texto
+  behavior = "null";
+  await handleInbound(deps, audio("t4"));
+  assert.deepEqual(sender.sent.at(-1), { to: "584125551", text: "Sigo aquí", template: false });
+
+  // 5) un desahogo larguísimo hablado entra en modo profundo: aviso + plan en texto, no en voz
+  behavior = "ok";
+  const before = spokenCount;
+  transcript = "x".repeat(950);
+  brain.next = { reply: "Plan: 1) ..." };
+  await handleInbound(deps, audio("t5"));
+  assert.equal(spokenCount, before);
+  assert.match(sender.sent.at(-2)!.text, /Dame un momentito/);
+  assert.equal(sender.sent.at(-1)!.text, "Plan: 1) ...");
+  assert.equal(brain.calls.at(-1)!.mode, "deep");
 });

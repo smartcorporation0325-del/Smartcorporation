@@ -31,6 +31,16 @@ export const config = {
   transcribeApiKey: env("TRANSCRIBE_API_KEY"),
   transcribeModel: env("TRANSCRIBE_MODEL", "whisper-1"),
 
+  // Respuestas en nota de voz (OpenAI por defecto). Sin TTS_API_KEY, Ancla contesta siempre en texto.
+  ttsUrl: env("TTS_URL", "https://api.openai.com/v1/audio/speech"),
+  ttsApiKey: env("TTS_API_KEY"),
+  ttsModel: env("TTS_MODEL", "gpt-4o-mini-tts"),
+  ttsVoice: env("TTS_VOICE", "coral"),
+  ttsInstructions: env(
+    "TTS_INSTRUCTIONS",
+    "Habla en español como una amiga cercana: cálida, tranquila y natural, sin sonar a locutora ni a asistente virtual.",
+  ),
+
   // Almacenamiento: si hay Supabase se usa; si no, memoria (solo para desarrollo)
   supabaseUrl: env("SUPABASE_URL"),
   supabaseServiceRoleKey: env("SUPABASE_SERVICE_ROLE_KEY"),

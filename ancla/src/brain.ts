@@ -265,6 +265,12 @@ export function buildMessages(ctx: BrainContext): Anthropic.Beta.BetaMessagePara
         text: "NOTA: es el PRIMER mensaje de esta persona. Ya recibió la bienvenida, así que no te presentes otra vez.",
       });
     }
+    if (ctx.input.voiceReply) {
+      content.push({
+        type: "text",
+        text: "NOTA: tu respuesta se enviará como NOTA DE VOZ. Escríbela para que se escuche natural.",
+      });
+    }
     if (ctx.input.image) {
       content.push({
         type: "image",

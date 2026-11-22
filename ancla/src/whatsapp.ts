@@ -11,6 +11,8 @@ export interface Sender {
   sendTemplate(to: string, param: string): Promise<void>;
   /** Mensaje con hasta 3 botones de respuesta rápida (solo dentro de la ventana de 24 h). */
   sendButtons(to: string, body: string, buttons: string[]): Promise<void>;
+  /** Nota de voz (audio Ogg/Opus). */
+  sendVoice(to: string, audio: Buffer): Promise<void>;
 }
 
 export type InboundMessage =
@@ -73,6 +75,23 @@ export class WhatsAppSender implements Sender {
     await this.post({ to, type: "text", text: { body: text.slice(0, 4096) } });
   }
 
+  async sendVoice(to: string, audio: Buffer) {
+    // 1) subir el archivo a WhatsApp; 2) mandarlo como nota de voz
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", "audio/ogg");
+    form.append("file", new Blob([new Uint8Array(audio)], { type: "audio/ogg" }), "ancla.ogg");
+    const up = await fetch(graph(`${config.whatsappPhoneNumberId}/media`), {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.whatsappToken}` },
+      body: form,
+    });
+    if (!up.ok) throw new Error(`WhatsApp subir audio ${up.status}`);
+    const { id } = (await up.json()) as { id?: string };
+    if (!id) throw new Error("WhatsApp no devolvió el id del audio");
+    await this.post({ to, type: "audio", audio: { id, voice: true } });
+  }
+
   async sendButtons(to: string, body: string, buttons: string[]) {
     const titles = cleanQuickReplies(buttons);
     // WhatsApp limita el cuerpo con botones a 1024 caracteres: si no cabe, va como texto normal.
@@ -118,12 +137,15 @@ export async function downloadMedia(mediaId: string): Promise<{ data: Buffer; mi
 
 /** Sender de consola para el simulador y los tests. */
 export class ConsoleSender implements Sender {
-  sent: { to: string; text: string; template: boolean; buttons?: string[] }[] = [];
+  sent: { to: string; text: string; template: boolean; buttons?: string[]; voice?: boolean }[] = [];
   async sendText(to: string, text: string) {
     this.sent.push({ to, text, template: false });
   }
   async sendTemplate(to: string, param: string) {
     this.sent.push({ to, text: param, template: true });
+  }
+  async sendVoice(to: string, _audio: Buffer) {
+    this.sent.push({ to, text: "(nota de voz)", template: false, voice: true });
   }
   async sendButtons(to: string, body: string, buttons: string[]) {
     const titles = cleanQuickReplies(buttons);

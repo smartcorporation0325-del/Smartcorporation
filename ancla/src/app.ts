@@ -1,6 +1,7 @@
 import { config } from "./config.ts";
 import { consolidate, findOrCreateUser, runTurn, type Deps, type TurnResult } from "./handler.ts";
 import { chooseMode } from "./modes.ts";
+import { MAX_VOICE_CHARS, speechText, synthesize, ttsConfigured, voiceInstructions } from "./tts.ts";
 import { helpText, matchCommand, privacyText, welcomeText, WELCOME_BUTTONS } from "./onboarding.ts";
 import { dueEvent, dueReminders, withinServiceWindow, type DueEvent } from "./scheduler.ts";
 import { localParts } from "./time.ts";
@@ -13,6 +14,7 @@ export interface AppDeps extends Deps {
   /** Se puede sustituir en tests/simulador. */
   fetchMedia?: typeof downloadMedia;
   transcribeAudio?: typeof transcribe;
+  synthesizeSpeech?: typeof synthesize;
   log?: (msg: string) => void;
 }
 
@@ -26,8 +28,32 @@ function serialize<T>(key: string, fn: () => Promise<T>): Promise<T> {
 }
 
 /** Entrega la respuesta: plantilla fuera de la ventana de 24 h; dentro, con botones si los hay. */
-async function deliver(deps: AppDeps, to: string, turn: TurnResult, inWindow = true) {
+async function deliver(
+  deps: AppDeps,
+  to: string,
+  turn: TurnResult,
+  inWindow = true,
+  voice?: { instructions: string },
+) {
   if (!inWindow) return deps.sender.sendTemplate(to, turn.reply);
+  // Respuesta en nota de voz (si hay servicio y cabe); cualquier fallo cae a texto para no dejarla sin respuesta.
+  if (voice && turn.reply.length <= MAX_VOICE_CHARS) {
+    let spoke = false;
+    try {
+      const audio = await (deps.synthesizeSpeech ?? synthesize)(speechText(turn.reply), voice.instructions);
+      if (audio) {
+        await deps.sender.sendVoice(to, audio);
+        spoke = true;
+      }
+    } catch (err) {
+      deps.log?.(`voz falló, se envía texto: ${(err as Error).message}`);
+    }
+    if (spoke) {
+      // Los botones no se pueden pegar a un audio: van en un mensaje de texto corto aparte.
+      if (turn.quickReplies.length > 0) await deps.sender.sendButtons(to, "Toca una opción si te sirve:", turn.quickReplies);
+      return;
+    }
+  }
   if (turn.quickReplies.length > 0) return deps.sender.sendButtons(to, turn.reply, turn.quickReplies);
   return deps.sender.sendText(to, turn.reply);
 }
@@ -121,11 +147,15 @@ export async function handleInbound(deps: AppDeps, msg: InboundMessage): Promise
     }
 
     const mode = chooseMode(input);
+    // Si te hablan por voz (y no es un plan largo), se responde por voz.
+    const canSpeak = Boolean(deps.synthesizeSpeech) || ttsConfigured();
+    const voice = msg.type === "audio" && canSpeak && mode !== "deep";
+    if (voice && input.type === "message") input = { ...input, voiceReply: true };
     // El modo profundo tarda más: se avisa para que no parezca que Ancla se quedó callada.
     if (mode === "deep") await deps.sender.sendText(msg.from, "Dame un momentito, esto lo quiero pensar bien.");
     const turn = await runTurn(deps, user, input, historyText, mode);
-    await deliver(deps, msg.from, turn);
-    deps.log?.(`respuesta enviada (${turn.reply.length} caracteres, ${turn.quickReplies.length} botones)`);
+    await deliver(deps, msg.from, turn, true, voice ? { instructions: voiceInstructions(user) } : undefined);
+    deps.log?.(`respuesta enviada (${turn.reply.length} caracteres, ${turn.quickReplies.length} botones${voice ? ", voz" : ""})`);
   });
 }
 

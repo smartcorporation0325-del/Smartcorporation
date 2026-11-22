@@ -32,6 +32,11 @@ Todo esto lo usa para proponerte cosas a la hora en que rindes mejor y adelantar
 ## Botones de respuesta rápida
 Cuando tiene sentido (una propuesta, un check-in, un recordatorio), Ancla ofrece hasta 3 botones ("Ya empecé", "10 min más", "Me atasqué") para tocar en vez de escribir. Al tocarlos le llegan como si hubieras escrito esas palabras. Solo funcionan dentro de las 24 h de la última vez que escribiste; fuera de eso se usa la plantilla. Si Meta rechaza los botones, el mensaje sale como texto normal. En el simulador (`npm run chat`) se ven como etiquetas resaltadas.
 
+## Respuestas en nota de voz
+Cuando le mandas una **nota de voz**, Ancla te contesta con una **nota de voz** (si hay servicio de voz configurado); cuando escribes, contesta en texto. Los botones de respuesta rápida van en un mensaje de texto aparte ("Toca una opción si te sirve:"), porque WhatsApp no deja pegarlos a un audio. Se quedan en texto las respuestas de más de 600 caracteres y los planes del modo "Piénsalo bien". Si la voz falla por cualquier motivo, te llega el texto: nunca se queda sin responder.
+
+Cómo se activa: en Render agrega `TTS_API_KEY` con una llave de OpenAI. Opcionales: `TTS_VOICE` (por defecto `coral`), `TTS_MODEL` (`gpt-4o-mini-tts`) y `TTS_INSTRUCTIONS` (cómo debe sonar; el acento del país se agrega solo según el prefijo del teléfono). WhatsApp solo muestra una nota de voz si el archivo es Ogg/Opus: se le pide ese formato al servicio y se comprueba la cabecera del archivo antes de enviarlo.
+
 ## Modos de respuesta (rápido, normal y "Piénsalo bien")
 Inspirado en el "Instantáneo" y el "Pensar" de Muse. El modo se elige solo, con reglas simples (sin otra llamada a la IA, así que no suma costo ni demora):
 - **Rápido:** acuses y botones simples ("gracias", "ok", "Ya empecé", "10 min más"). Respuesta de 1 o 2 líneas.

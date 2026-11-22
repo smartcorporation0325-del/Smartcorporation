@@ -33,7 +33,7 @@ export function privacyHtml(operator: string, contactEmail: string): string {
 <li><strong>Meta (WhatsApp)</strong>, que transporta los mensajes.</li>
 <li><strong>Anthropic</strong>, cuyo modelo de IA (Claude) lee tus mensajes y el contexto necesario para generar cada respuesta.</li>
 <li><strong>Supabase</strong>, donde se guarda la base de datos, y <strong>Render</strong>, donde corre el servidor.</li>
-<li>Si está activado, un servicio de <strong>transcripción de audio</strong> para convertir tus notas de voz en texto.</li>
+<li>Si están activados, servicios de <strong>transcripción de audio</strong> (para convertir tus notas de voz en texto) y de <strong>síntesis de voz</strong> (para responderte con notas de voz). Para esto se les envía el audio que tú mandas y el texto de la respuesta.</li>
 </ul>
 
 <h2>Cuánto tiempo los guardamos</h2>
