@@ -157,15 +157,34 @@ Métricas secundarias: retención a 4 semanas y "¿te sentiste peor o mejor cont
 
 ## 7. Competencia y diferenciador
 
-| App | Qué hace bien | Qué le falta |
-|---|---|---|
-| Goblin Tools | Desglose de tareas, microherramientas simples | No te conoce, no es proactiva, no tiene memoria |
-| Tiimo | Planner visual, rutinas, timers | Es una app más que hay que abrir; planificar ya cuesta |
-| Saner.ai | Hub de notas, tareas, calendario y correo con IA | Orientado a "organizar"; poca regulación emocional |
-| Focusmate | Body doubling con humanos | Requiere agendar; nada de IA ni de captura |
-| Meta AI / Muse | Voz, multimodal, está en WhatsApp | Genérico, hecho para enganchar, no entiende TDA |
+> **Corregido el 22 de noviembre de 2026.** La primera versión de esta sección decía que Ancla sería "el único asistente que te busca a ti" y que "ninguna app de TDA" ofrece varios canales. Al revisar el mercado de nuevo, eso no se sostiene: ya existen productos muy parecidos, incluso dentro de WhatsApp y Telegram. Casi toda la información viene de fichas de tiendas de apps y de artículos de los propios desarrolladores, así que lo que dicen de sí mismos **no está verificado**.
 
-**Nuestro diferenciador:** *el único asistente que te busca a ti, te conoce, te ayuda a EMPEZAR y nunca te hace sentir mal.* Y está en español primero.
+| Producto | Qué es (según ellos) | Se parece a Ancla en |
+|---|---|---|
+| [Ping.me](https://www.producthunt.com/products/ping-me-2) | Asistente de recordatorios para TDAH dentro de WhatsApp, con memoria | Canal y recordatorios (el más cercano) |
+| [Sihem](https://www.indiehackers.com/product/sihem) | Mentor de IA en Telegram, tranquilo y sin juicios | Tono y canal |
+| [Ari](https://apps.apple.com/us/app/-/id6742913457), [Helpz](https://play.google.com/store/apps/details?id=com.helpz), [Zoe](https://www.producthunt.com/products/ping-me-2) | Coaches de IA con check-ins | Check-ins |
+| [shelpful](https://apps.apple.com/py/app/shelpful-ai-for-adhd-tasks/id6741499362?l=en-GB) | Tareas con IA y tono elegible, con recordatorios | Tono adaptable |
+| [Recordo](https://apps.apple.com/app/id6756238969), [Goblin Tools](https://apps.apple.com/py/app/goblin-tools-not-boring-habits/id6462700951) | Dividen tareas en micropasos | "Primer paso chiquito" |
+| [Tiimo](https://apps.apple.com/es/app/id1480220328) | Planificador visual de tiempo | Ayuda con el tiempo |
+| [Focusmate](https://add.org/adhd-tools-for-adults/) | Acompañamiento (*body doubling*) con personas reales | Acompañar mientras trabajas |
+| Meta AI / Muse | Voz, multimodal, dentro de WhatsApp; genérico | Canal y voz |
+
+**Lo que NO nos diferencia:** estar en WhatsApp, los recordatorios, los micropasos, el tono amable y los check-ins. Cualquier función que se pueda describir en una frase la puede copiar otro equipo en semanas.
+
+**Lo que podría diferenciarnos (hipótesis, sin comprobar con usuarios):**
+1. **Devolverte tus propias palabras en el momento justo**, con la hora en que las dijiste ("esta mañana me dijiste que ibas a llamar al dentista").
+2. **Aprender tus patrones por hora** (cuándo rindes, cuándo te distraes) y usarlos para anticiparse.
+3. **Español primero**, con tono según el país y sin jerga forzada, en un mercado donde casi todo está en inglés.
+4. **Memoria de tu gente y tu contexto**, no solo de tus tareas, con control de borrado (`/olvidar`).
+5. **Diseño sin culpa** como principio.
+6. Planeado pero **todavía no construido**: estimador real de tiempos y aparato físico.
+
+**Cómo se vuelve un diferenciador de verdad:** no por tener más funciones, sino porque la gente **empiece más cosas** y **se quede**. Las métricas son tareas iniciadas por semana y retención a las 4 semanas. A eso se suma la memoria acumulada de cada persona, que hace costoso irse, y la confianza (revisión clínica, privacidad).
+
+**Frase de posicionamiento para probar:** *"Tu memoria externa en español: te devuelve lo que dijiste, cuando lo necesitas, sin culpa."*
+
+**Qué verificar antes de afirmar algo más:** usar 2 o 3 competidores durante una semana (Ping.me, Goblin Tools, Tiimo), comparar con Ancla y anotar qué hacen mejor ellos.
 
 ### 7b. "Más que una app": un cerebro con muchos cuerpos
 
@@ -182,11 +201,11 @@ Como Muse, el producto es **un asistente**, no una app. Hay un solo "cerebro" ce
                                            "Ancla"   (futuro)
 ```
 
-**Qué tiene que ser difícil de copiar (el foso):**
-1. **Especialización en TDA:** está diseñado para *empezar*, *sentir el tiempo* y *regular la emoción*. La competencia se queda en *organizar*.
+**Qué podría ser difícil de copiar (el foso; son hipótesis, ninguna está probada todavía):**
+1. **Especialización en TDA:** está diseñado para *empezar*, *sentir el tiempo* y *regular la emoción*. Ojo: varios competidores dicen lo mismo, así que esto solo cuenta si se demuestra con usuarios.
 2. **Proactividad con criterio:** sabe cuándo hablarte y cuándo callarse. Ese "cuándo" se aprende con datos de uso: es el activo más valioso.
 3. **Memoria y perfil personal:** tus tiempos reales, tus patrones de energía y lo que a ti te activa. Cuanto más lo usas, mejor funciona y más cuesta irse.
-4. **Omnicanal:** el mismo compañero en WhatsApp, por voz y en un aparato. Ninguna app de TDA hace esto.
+4. **Omnicanal:** el mismo compañero en WhatsApp, por voz y en un aparato. Hoy solo existe el canal de WhatsApp; no encontré otra app de TDA que combine los tres, pero no lo verifiqué a fondo.
 5. **Español y Latinoamérica primero.** Casi toda la competencia está en inglés.
 6. **Personaje propio:** un "amigo" con nombre y personalidad, no un chatbot genérico.
 7. **Modelo de negocio alineado:** cobramos por ayudarte, no por tu atención. Privacidad fuerte.
