@@ -27,6 +27,7 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 export function createApp(deps: AppDeps) {
+  let tickRunning = false; // evita que dos revisiones del reloj corran a la vez
   return createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     try {
@@ -69,8 +70,22 @@ export function createApp(deps: AppDeps) {
           res.writeHead(401).end("unauthorized");
           return;
         }
-        const sent = await runTick(deps);
-        res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ sent }));
+        // Se responde al instante y el trabajo sigue en segundo plano: así ninguna tarea lenta (llamadas a Claude,
+        // el cierre del día) puede hacer que cron-job.org marque la llamada como fallida y apague el reloj.
+        if (tickRunning) {
+          res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ busy: true }));
+          return;
+        }
+        tickRunning = true;
+        res.writeHead(202, { "Content-Type": "application/json" }).end(JSON.stringify({ accepted: true }));
+        runTick(deps)
+          .then((sent) => {
+            if (sent > 0) log(`tick: ${sent} mensaje(s) proactivo(s)`);
+          })
+          .catch((err) => log(`tick falló: ${(err as Error).message}`))
+          .finally(() => {
+            tickRunning = false;
+          });
         return;
       }
 

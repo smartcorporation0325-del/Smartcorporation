@@ -7,7 +7,7 @@ Un servidor Node 22 + TypeScript (sin paso de build: `node --experimental-strip-
 1. recibe los mensajes de WhatsApp por webhook (`src/server.ts`, `src/whatsapp.ts`),
 2. arma el contexto de la persona (memoria en Postgres/Supabase) y hace **una llamada a Claude por turno** con salida JSON estructurada (`src/brain.ts`): la respuesta más las acciones (pendientes, recordatorios, notas, observaciones, botones),
 3. aplica esas acciones (`src/handler.ts`) y responde,
-4. y un reloj externo (cron-job.org, cada 10 min → `POST /cron/tick`) le permite escribir primero (`src/scheduler.ts`, `src/app.ts`).
+4. y un reloj externo (cron-job.org, cada 10 min → `POST /cron/tick`) le permite escribir primero (`src/scheduler.ts`, `src/app.ts`). `/cron/tick` responde al instante (`202 {"accepted":true}`) y trabaja en segundo plano; si ya hay una revisión corriendo responde `{"busy":true}`. Un reloj que recibe respuestas lentas o raras se apaga solo tras muchos fallos.
 
 No es un agente autónomo: no tiene herramientas libres (no navega, no manda correos). Es un asistente conversacional con memoria y mensajes proactivos.
 

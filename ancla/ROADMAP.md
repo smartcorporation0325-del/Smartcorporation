@@ -24,7 +24,7 @@ Usarla unos 7 días y anotar qué sirve y qué molesta. Es lo que más mejora el
 - [ ] Borrar la llave vieja de Claude del Codespace y detener el Codespace
 - [ ] Plantilla de WhatsApp aprobada por Meta, para escribir pasadas 24 h sin que hables
 - [ ] Plan de pago en Render (el gratis se duerme y a veces tarda en responder)
-- [ ] Aviso cuando el servidor falle
+- [ ] Aviso cuando el servidor falle (hoy llega el correo de cron-job.org cuando apaga el reloj; el 22 de noviembre se apagó por 26 fallos seguidos con "Response data too big" y no se conoce la causa)
 - [ ] Cambiar `CRON_SECRET` por una clave aleatoria nueva (opcional)
 - [ ] Comparar un modelo más rápido para el modo rápido: poner `ANTHROPIC_FAST_MODEL` en Render, usar Ancla unos días y mirar las líneas `turno:` de los registros (tiempo y tokens) junto con cómo suena
 

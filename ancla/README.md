@@ -100,6 +100,8 @@ Pruebas automáticas (no necesitan llaves): `npm test` y `npm run typecheck`.
    ```
    O pon `INTERNAL_CRON=true` si el servidor está siempre encendido.
 
+   El servidor responde al instante `202 {"accepted":true}` y hace el trabajo en segundo plano (si ya hay una revisión en curso responde `{"busy":true}`). Así una tarea lenta nunca hace fallar el reloj. Si usas cron-job.org, activa **Save responses in job history** para poder ver qué respondió el servidor si algo falla: cron-job.org apaga el reloj solo después de muchos fallos seguidos.
+
 ### La regla de las 24 horas de WhatsApp
 WhatsApp solo deja mandar texto libre si la persona escribió en las últimas 24 h. Pasado ese tiempo, solo se pueden mandar **plantillas aprobadas por Meta**.
 
