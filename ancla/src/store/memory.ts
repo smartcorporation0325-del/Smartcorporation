@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ChatMessage, Item, Observation, Reminder, User } from "../types.ts";
-import type { NewItem, NewReminder, Store } from "./index.ts";
+import type { InboundMessage } from "../whatsapp.ts";
+import type { NewItem, NewReminder, PendingInbound, Store } from "./index.ts";
 
 /** Store en memoria: se pierde al reiniciar. Solo para desarrollo y tests. */
 export class MemoryStore implements Store {
@@ -8,6 +9,7 @@ export class MemoryStore implements Store {
   items = new Map<string, Item>();
   messages: ChatMessage[] = [];
   seen = new Set<string>();
+  pendingInbound = new Map<string, PendingInbound>();
   reminders = new Map<string, Reminder>();
   observations: Observation[] = [];
 
@@ -125,14 +127,35 @@ export class MemoryStore implements Store {
     this.messages = this.messages.filter((m) => m.userId !== userId);
     this.observations = this.observations.filter((o) => o.userId !== userId);
     const u = this.users.get(userId);
+    for (const [id, p] of this.pendingInbound) if (p.msg.from === u?.phone) this.pendingInbound.delete(id);
     if (u) {
       Object.assign(u, { notes: [], voice: "", routines: [], profile: "", people: [], energy: "unknown", focusItemId: null, checkinAt: null });
     }
   }
 
-  async claimInboundMessage(id: string) {
-    if (this.seen.has(id)) return false;
-    this.seen.add(id);
+  async claimInboundMessage(msg: InboundMessage) {
+    if (this.seen.has(msg.id)) return false;
+    this.seen.add(msg.id);
+    this.pendingInbound.set(msg.id, { msg: { ...msg }, attempts: 1, receivedAt: (this.clock?.() ?? new Date()).toISOString() });
     return true;
   }
+
+  async updatePendingInbound(p: PendingInbound) {
+    if (this.pendingInbound.has(p.msg.id)) this.pendingInbound.set(p.msg.id, structuredClone(p));
+  }
+
+  async finishInbound(id: string) {
+    this.pendingInbound.delete(id);
+  }
+
+  async listStuckInbound(beforeIso: string, limit: number) {
+    return [...this.pendingInbound.values()]
+      .filter((p) => p.receivedAt < beforeIso)
+      .sort((a, b) => a.receivedAt.localeCompare(b.receivedAt))
+      .slice(0, limit)
+      .map((p) => structuredClone(p));
+  }
+
+  /** Solo tests: reloj para fechar los mensajes recibidos. */
+  clock?: () => Date;
 }

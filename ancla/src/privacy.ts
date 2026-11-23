@@ -14,7 +14,7 @@ export function privacyHtml(operator: string, contactEmail: string): string {
 <style>body{font-family:system-ui,sans-serif;max-width:720px;margin:2rem auto;padding:0 1rem;line-height:1.6;color:#222}h1{font-size:1.6rem}h2{font-size:1.1rem;margin-top:1.8rem}</style></head>
 <body>
 <h1>Política de privacidad de Ancla</h1>
-<p>Última actualización: 21 de noviembre de 2026.</p>
+<p>Última actualización: 23 de noviembre de 2026.</p>
 <p>Ancla es un asistente por WhatsApp para personas con TDA/TDAH. Lo opera <strong>${who}</strong>. Esta página explica qué datos usa Ancla y cómo puedes borrarlos.</p>
 
 <h2>Qué datos guardamos</h2>
@@ -37,7 +37,7 @@ export function privacyHtml(operator: string, contactEmail: string): string {
 </ul>
 
 <h2>Cuánto tiempo los guardamos</h2>
-<p>Mientras uses Ancla o hasta que los borres.</p>
+<p>Mientras uses Ancla o hasta que los borres. Cada mensaje que llega se guarda aparte por un momento, solo hasta que Ancla te contesta, para no perderlo si el servidor se reinicia; después se borra esa copia.</p>
 
 <h2>Cómo borrar tus datos</h2>
 <p>En el chat con Ancla escribe <strong>/olvidar</strong> y luego <strong>/olvidar todo</strong>. Esto borra tus pendientes, recordatorios, rutinas, notas, personas, observaciones, perfil e historial de mensajes. Si además quieres que borremos tu número, escríbenos a ${contact} y lo eliminamos.</p>

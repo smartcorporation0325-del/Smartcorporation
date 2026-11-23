@@ -6,6 +6,7 @@ import { helpText, matchCommand, privacyText, welcomeText, WELCOME_BUTTONS } fro
 import { dueEvent, dueReminders, withinServiceWindow, type DueEvent } from "./scheduler.ts";
 import { localParts } from "./time.ts";
 import { transcribe } from "./transcribe.ts";
+import type { PendingInbound } from "./store/index.ts";
 import type { Reminder, TurnInput, User } from "./types.ts";
 import { downloadMedia, type InboundMessage, type Sender } from "./whatsapp.ts";
 
@@ -63,104 +64,193 @@ const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
-export async function handleInbound(deps: AppDeps, msg: InboundMessage): Promise<void> {
-  if (!(await deps.store.claimInboundMessage(msg.id))) return; // reintento de Meta: ya lo procesamos
-  await serialize(msg.from, async () => {
-    const { user, created } = await findOrCreateUser(deps.store, msg.from, msg.profileName);
-    // Bienvenida solo a números nuevos y solo si su primer mensaje no es un comando.
-    const firstContact = created && !(msg.type === "text" && matchCommand(msg.text));
-    if (firstContact) {
-      const welcome = welcomeText();
-      await deps.sender.sendButtons(msg.from, welcome, WELCOME_BUTTONS);
-      await deps.store.addMessage({ userId: user.id, role: "assistant", text: welcome });
-    }
-    const fetchMedia = deps.fetchMedia ?? downloadMedia;
-    const transcribeAudio = deps.transcribeAudio ?? transcribe;
+// Un mensaje que falla se reintenta en las siguientes revisiones del reloj; después de esto, se avisa y se suelta.
+export const MAX_INBOUND_ATTEMPTS = 3;
+// Un mensaje sin terminar se da por "a medias" después de esto (más que lo que tarda un turno lento).
+export const STUCK_AFTER_MS = 3 * 60_000;
+// Más viejo que esto ya no tiene sentido contestarlo como si nada: se pide que lo repita.
+const STALE_AFTER_MS = 12 * 60 * 60_000;
 
-    let input: TurnInput;
-    let historyText: string;
-    if (msg.type === "text") {
-      const cmd = matchCommand(msg.text);
-      if (cmd === "help") {
-        await deps.sender.sendText(msg.from, helpText());
-        return;
+// Mensajes que este servidor está procesando ahora (para no tomarlos dos veces y para apagarse con calma).
+const inFlight = new Set<string>();
+export const inFlightCount = () => inFlight.size;
+
+export async function handleInbound(deps: AppDeps, msg: InboundMessage): Promise<void> {
+  if (!(await deps.store.claimInboundMessage(msg))) return; // reintento de Meta: ya lo procesamos
+  await processInbound(deps, { msg, attempts: 1, receivedAt: (deps.now?.() ?? new Date()).toISOString() });
+}
+
+/**
+ * Procesa un mensaje guardado como pendiente y lo cierra al terminar. Si algo falla queda pendiente,
+ * y la revisión del reloj (o el arranque del servidor) lo retoma: así no se pierde si el servidor
+ * se reinicia a mitad de camino.
+ */
+async function processInbound(deps: AppDeps, p: PendingInbound, retry = false): Promise<void> {
+  const { msg } = p;
+  inFlight.add(msg.id);
+  try {
+    await serialize(msg.from, async () => {
+      if (p.reply) {
+        // El cerebro ya había contestado; solo faltó enviarlo.
+        await deliver(deps, msg.from, p.reply);
+      } else {
+        // En un reintento, la hora "de ahora" es la hora en que llegó el mensaje ("en 15 minutos" cuenta desde ahí).
+        const turnDeps = retry ? { ...deps, now: () => new Date(p.receivedAt) } : deps;
+        await respond(turnDeps, msg, async (reply) => {
+          p.reply = reply;
+          await deps.store.updatePendingInbound(p);
+        });
       }
-      if (cmd === "privacy") {
-        await deps.sender.sendText(msg.from, privacyText());
-        return;
-      }
-      // Control de privacidad: borrar todo lo que Ancla sabe de ella (pide confirmación).
-      if (cmd === "forget") {
-        await deps.sender.sendText(
-          msg.from,
-          "Si quieres que me olvide de todo lo que sé de ti (tus rutinas, la gente que me has contado, tus notas, recordatorios, pendientes y nuestro historial), escribe /olvidar todo. No se puede deshacer. Si no, aquí seguimos igual.",
-        );
-        return;
-      }
-      if (cmd === "forget-all") {
-        await deps.store.wipeUserData(user.id);
-        await deps.sender.sendText(msg.from, "Listo, borré todo lo que sabía de ti. Cuando quieras empezamos de cero.");
-        return;
-      }
-      input = { type: "message", text: msg.text, ...(firstContact && { firstContact: true }) };
-      historyText = msg.text;
-    } else if (msg.type === "audio") {
-      const media = await fetchMedia(msg.mediaId);
-      if (media.data.byteLength > MAX_AUDIO_BYTES) {
-        await deps.sender.sendText(msg.from, "Ese audio es muy largo para mí. ¿Me lo mandas en partes más cortas?");
-        return;
-      }
-      let text: string | null;
-      try {
-        text = await transcribeAudio(media.data, media.mimeType);
-      } catch (err) {
-        deps.log?.(`transcripción falló: ${(err as Error).message}`);
-        await deps.sender.sendText(msg.from, "No logré escuchar ese audio. ¿Me lo mandas otra vez o me lo escribes?");
-        return;
-      }
-      if (text === null) {
-        await deps.sender.sendText(msg.from, "Todavía no puedo escuchar audios 🙈 ¿Me lo mandas escrito, aunque sea desordenado?");
-        return;
-      }
-      if (!text) {
-        await deps.sender.sendText(msg.from, "No alcancé a entender nada en ese audio. ¿Me lo repites o me lo escribes?");
-        return;
-      }
-      input = { type: "message", text: `(audio transcrito) ${text}`, ...(firstContact && { firstContact: true }) };
-      historyText = `(audio) ${text}`;
-    } else if (msg.type === "image") {
-      const media = await fetchMedia(msg.mediaId);
-      if (!IMAGE_TYPES.has(media.mimeType)) {
-        await deps.sender.sendText(msg.from, "No pude abrir esa imagen. ¿Me mandas una foto normal (JPG o PNG)?");
-        return;
-      }
-      input = {
-        type: "message",
-        text: msg.caption,
-        ...(firstContact && { firstContact: true }),
-        image: { mediaType: media.mimeType, base64: media.data.toString("base64") },
-      };
-      historyText = `(foto) ${msg.caption}`.trim();
-    } else {
-      await deps.sender.sendText(msg.from, "Por ahora entiendo texto, audios y fotos. ¿Me lo cuentas por ahí?");
+    });
+    await deps.store.finishInbound(msg.id, "done");
+    if (retry) deps.log?.(`mensaje recuperado (intento ${p.attempts})`);
+  } catch (err) {
+    deps.log?.(`mensaje falló (intento ${p.attempts} de ${MAX_INBOUND_ATTEMPTS}): ${(err as Error).message}`);
+    if (p.attempts >= MAX_INBOUND_ATTEMPTS) {
+      await giveUp(deps, p);
+    } else if (!retry && !p.reply) {
+      // Que no se quede esperando en silencio: el reloj lo reintenta en unos minutos.
+      await deps.sender
+        .sendText(msg.from, "Uy, se me trabó algo con tu mensaje. Lo vuelvo a intentar en unos minutos, no tienes que repetirlo.")
+        .catch(() => {});
+    }
+  } finally {
+    inFlight.delete(msg.id);
+  }
+}
+
+/** Después de varios intentos (o si es muy viejo): se cierra y se le pide que lo repita, sin culpa. */
+async function giveUp(deps: AppDeps, p: PendingInbound) {
+  await deps.store.finishInbound(p.msg.id, "failed").catch(() => {});
+  await deps.sender
+    .sendText(p.msg.from, "Perdón, no logré procesar uno de tus mensajes de hace un rato. Si todavía te sirve, ¿me lo mandas otra vez?")
+    .catch(() => {});
+  deps.log?.("mensaje abandonado tras varios intentos; se pidió repetirlo");
+}
+
+/** Retoma los mensajes que quedaron a medias (servidor reiniciado, error de un servicio…). Devuelve cuántos tomó. */
+export async function recoverInbound(deps: AppDeps, now = deps.now?.() ?? new Date()): Promise<number> {
+  const stuck = await deps.store.listStuckInbound(new Date(now.getTime() - STUCK_AFTER_MS).toISOString(), 20);
+  let taken = 0;
+  for (const p of stuck) {
+    if (inFlight.has(p.msg.id)) continue; // este mismo servidor lo está procesando
+    taken++;
+    if (now.getTime() - Date.parse(p.receivedAt) > STALE_AFTER_MS || p.attempts >= MAX_INBOUND_ATTEMPTS) {
+      await giveUp(deps, p);
+      continue;
+    }
+    const next = { ...p, attempts: p.attempts + 1 };
+    // Se anota el intento antes de empezar: si este también se cae, no se reintenta para siempre.
+    await deps.store.updatePendingInbound(next);
+    await processInbound(deps, next, true);
+  }
+  return taken;
+}
+
+/** Arma la respuesta a un mensaje y la entrega. `onReply` guarda la respuesta antes de enviarla. */
+async function respond(deps: AppDeps, msg: InboundMessage, onReply: (r: { reply: string; quickReplies: string[] }) => Promise<void>) {
+  const { user, created } = await findOrCreateUser(deps.store, msg.from, msg.profileName);
+  // Bienvenida solo a números nuevos y solo si su primer mensaje no es un comando.
+  const firstContact = created && !(msg.type === "text" && matchCommand(msg.text));
+  if (firstContact) {
+    const welcome = welcomeText();
+    await deps.sender.sendButtons(msg.from, welcome, WELCOME_BUTTONS);
+    await deps.store.addMessage({ userId: user.id, role: "assistant", text: welcome });
+  }
+  const fetchMedia = deps.fetchMedia ?? downloadMedia;
+  const transcribeAudio = deps.transcribeAudio ?? transcribe;
+
+  let input: TurnInput;
+  let historyText: string;
+  if (msg.type === "text") {
+    const cmd = matchCommand(msg.text);
+    if (cmd === "help") {
+      await deps.sender.sendText(msg.from, helpText());
       return;
     }
+    if (cmd === "privacy") {
+      await deps.sender.sendText(msg.from, privacyText());
+      return;
+    }
+    // Control de privacidad: borrar todo lo que Ancla sabe de ella (pide confirmación).
+    if (cmd === "forget") {
+      await deps.sender.sendText(
+        msg.from,
+        "Si quieres que me olvide de todo lo que sé de ti (tus rutinas, la gente que me has contado, tus notas, recordatorios, pendientes y nuestro historial), escribe /olvidar todo. No se puede deshacer. Si no, aquí seguimos igual.",
+      );
+      return;
+    }
+    if (cmd === "forget-all") {
+      await deps.store.wipeUserData(user.id);
+      await deps.sender.sendText(msg.from, "Listo, borré todo lo que sabía de ti. Cuando quieras empezamos de cero.");
+      return;
+    }
+    input = { type: "message", text: msg.text, ...(firstContact && { firstContact: true }) };
+    historyText = msg.text;
+  } else if (msg.type === "audio") {
+    const media = await fetchMedia(msg.mediaId);
+    if (media.data.byteLength > MAX_AUDIO_BYTES) {
+      await deps.sender.sendText(msg.from, "Ese audio es muy largo para mí. ¿Me lo mandas en partes más cortas?");
+      return;
+    }
+    let text: string | null;
+    try {
+      text = await transcribeAudio(media.data, media.mimeType);
+    } catch (err) {
+      deps.log?.(`transcripción falló: ${(err as Error).message}`);
+      await deps.sender.sendText(msg.from, "No logré escuchar ese audio. ¿Me lo mandas otra vez o me lo escribes?");
+      return;
+    }
+    if (text === null) {
+      await deps.sender.sendText(msg.from, "Todavía no puedo escuchar audios 🙈 ¿Me lo mandas escrito, aunque sea desordenado?");
+      return;
+    }
+    if (!text) {
+      await deps.sender.sendText(msg.from, "No alcancé a entender nada en ese audio. ¿Me lo repites o me lo escribes?");
+      return;
+    }
+    input = { type: "message", text: `(audio transcrito) ${text}`, ...(firstContact && { firstContact: true }) };
+    historyText = `(audio) ${text}`;
+  } else if (msg.type === "image") {
+    const media = await fetchMedia(msg.mediaId);
+    if (!IMAGE_TYPES.has(media.mimeType)) {
+      await deps.sender.sendText(msg.from, "No pude abrir esa imagen. ¿Me mandas una foto normal (JPG o PNG)?");
+      return;
+    }
+    input = {
+      type: "message",
+      text: msg.caption,
+      ...(firstContact && { firstContact: true }),
+      image: { mediaType: media.mimeType, base64: media.data.toString("base64") },
+    };
+    historyText = `(foto) ${msg.caption}`.trim();
+  } else {
+    await deps.sender.sendText(msg.from, "Por ahora entiendo texto, audios y fotos. ¿Me lo cuentas por ahí?");
+    return;
+  }
 
-    const mode = chooseMode(input);
-    // Si te hablan por voz (y no es un plan largo), se responde por voz.
-    const canSpeak = Boolean(deps.synthesizeSpeech) || ttsConfigured();
-    const voice = msg.type === "audio" && canSpeak && mode !== "deep";
-    if (voice && input.type === "message") input = { ...input, voiceReply: true };
-    // El modo profundo tarda más: se avisa para que no parezca que Ancla se quedó callada.
-    if (mode === "deep") await deps.sender.sendText(msg.from, "Dame un momentito, esto lo quiero pensar bien.");
-    const turn = await runTurn(deps, user, input, historyText, mode);
-    await deliver(deps, msg.from, turn, true, voice ? { instructions: voiceInstructions(user) } : undefined);
-    deps.log?.(`respuesta enviada (${turn.reply.length} caracteres, ${turn.quickReplies.length} botones${voice ? ", voz" : ""})`);
-  });
+  const mode = chooseMode(input);
+  // Si te hablan por voz (y no es un plan largo), se responde por voz.
+  const canSpeak = Boolean(deps.synthesizeSpeech) || ttsConfigured();
+  const voice = msg.type === "audio" && canSpeak && mode !== "deep";
+  if (voice && input.type === "message") input = { ...input, voiceReply: true };
+  // El modo profundo tarda más: se avisa para que no parezca que Ancla se quedó callada.
+  if (mode === "deep") await deps.sender.sendText(msg.from, "Dame un momentito, esto lo quiero pensar bien.");
+  const turn = await runTurn(deps, user, input, historyText, mode);
+  await onReply(turn);
+  await deliver(deps, msg.from, turn, true, voice ? { instructions: voiceInstructions(user) } : undefined);
+  deps.log?.(`respuesta enviada (${turn.reply.length} caracteres, ${turn.quickReplies.length} botones${voice ? ", voz" : ""})`);
 }
 
 /** Revisa a todas las personas y manda los mensajes proactivos que toquen. Llamar cada ~10 min. */
 export async function runTick(deps: AppDeps, now = deps.now?.() ?? new Date()): Promise<number> {
+  // Primero, lo que la gente escribió y quedó sin respuesta.
+  try {
+    const recovered = await recoverInbound(deps, now);
+    if (recovered > 0) deps.log?.(`tick: ${recovered} mensaje(s) a medias retomado(s)`);
+  } catch (err) {
+    deps.log?.(`recuperar mensajes falló: ${(err as Error).message}`);
+  }
   const users = await deps.store.listUsers();
   let sent = 0;
   for (const user of users) {

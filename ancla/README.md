@@ -120,3 +120,4 @@ Sin plantilla, Ancla simplemente no escribe fuera de la ventana. No pasa nada: c
 - Los recordatorios salen con la precisión del cron (cada ~10 min) y solo si pasaron menos de 6 h de su hora; si no, aparecen como "vencidos" cuando la persona vuelve a escribir.
 - No hay modo de voz en tiempo real ni aparato físico (eso viene después, ver el brain dump).
 - La cola que ordena los mensajes de cada persona vive en memoria: corre **una sola instancia** del servidor.
+- Si el servidor se reinicia o falla un servicio mientras contesta, el mensaje no se pierde: queda guardado y se retoma en la siguiente revisión del reloj (≤10 min) o al arrancar. Si falla, Ancla avisa ("se me trabó algo… lo vuelvo a intentar"); tras 3 intentos pide que se lo repitan.

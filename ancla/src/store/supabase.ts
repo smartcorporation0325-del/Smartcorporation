@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { ChatMessage, Item, Observation, Reminder, User } from "../types.ts";
-import type { NewItem, NewReminder, Store } from "./index.ts";
+import type { InboundMessage } from "../whatsapp.ts";
+import type { NewItem, NewReminder, PendingInbound, Store } from "./index.ts";
 
 // Mapeo entre columnas snake_case de Postgres (supabase/schema.sql) y los tipos camelCase.
 
@@ -229,6 +230,14 @@ export class SupabaseStore implements Store {
   }
 
   async wipeUserData(userId: string) {
+    if (!this.inboundLegacy) {
+      const user = check(await this.db.from("ancla_users").select("phone").eq("id", userId).maybeSingle());
+      if (user?.phone) {
+        check(
+          await this.db.from("ancla_inbound_ids").update({ status: "done", phone: null, payload: null }).eq("phone", user.phone),
+        );
+      }
+    }
     for (const table of ["ancla_items", "ancla_messages", "ancla_reminders", "ancla_observations"]) {
       check(await this.db.from(table).delete().eq("user_id", userId));
     }
@@ -240,10 +249,72 @@ export class SupabaseStore implements Store {
     );
   }
 
-  async claimInboundMessage(waMessageId: string) {
-    const res = await this.db.from("ancla_inbound_ids").insert({ id: waMessageId });
+  /**
+   * true si la base todavía no tiene las columnas nuevas de ancla_inbound_ids (falta correr el SQL):
+   * entonces solo se evita procesar duplicados, como antes, y no se recuperan mensajes a medias.
+   */
+  private inboundLegacy = false;
+
+  async claimInboundMessage(msg: InboundMessage) {
+    if (!this.inboundLegacy) {
+      const res = await this.db
+        .from("ancla_inbound_ids")
+        .insert({ id: msg.id, status: "pending", phone: msg.from, payload: { msg }, attempts: 1 });
+      if (!res.error) return true;
+      if (res.error.code === "23505") return false; // unique_violation: ya procesado
+      // 42703 / PGRST204: columna inexistente → la base es la versión anterior.
+      if (res.error.code !== "42703" && res.error.code !== "PGRST204") throw new Error(`Supabase: ${res.error.message}`);
+      this.inboundLegacy = true;
+      console.warn(
+        "AVISO: falta actualizar la tabla ancla_inbound_ids (corre supabase/schema.sql); los mensajes a medias no se podrán recuperar",
+      );
+    }
+    const res = await this.db.from("ancla_inbound_ids").insert({ id: msg.id });
     if (!res.error) return true;
-    if (res.error.code === "23505") return false; // unique_violation: ya procesado
+    if (res.error.code === "23505") return false;
     throw new Error(`Supabase: ${res.error.message}`);
+  }
+
+  async updatePendingInbound(p: PendingInbound) {
+    if (this.inboundLegacy) return;
+    check(
+      await this.db
+        .from("ancla_inbound_ids")
+        .update({ attempts: p.attempts, payload: { msg: p.msg, ...(p.reply && { reply: p.reply }) } })
+        .eq("id", p.msg.id)
+        .eq("status", "pending"),
+    );
+  }
+
+  async finishInbound(waMessageId: string, status: "done" | "failed") {
+    if (this.inboundLegacy) return;
+    // Se borra el contenido y el número: solo queda el id para seguir ignorando reintentos de Meta.
+    check(await this.db.from("ancla_inbound_ids").update({ status, phone: null, payload: null }).eq("id", waMessageId));
+  }
+
+  async listStuckInbound(beforeIso: string, limit: number) {
+    if (this.inboundLegacy) return [];
+    const res = await this.db
+      .from("ancla_inbound_ids")
+      .select("id, attempts, payload, created_at")
+      .eq("status", "pending")
+      .lt("created_at", beforeIso)
+      .order("created_at")
+      .limit(limit);
+    if (res.error) {
+      if (res.error.code === "42703" || res.error.code === "PGRST204") {
+        this.inboundLegacy = true;
+        return [];
+      }
+      throw new Error(`Supabase: ${res.error.message}`);
+    }
+    return (res.data ?? [])
+      .filter((r: Row) => r.payload?.msg)
+      .map((r: Row): PendingInbound => ({
+        msg: r.payload.msg,
+        attempts: r.attempts ?? 0,
+        receivedAt: r.created_at,
+        ...(r.payload.reply && { reply: r.payload.reply }),
+      }));
   }
 }

@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { handleInbound, runTick, type AppDeps } from "./app.ts";
+import { handleInbound, inFlightCount, recoverInbound, runTick, STUCK_AFTER_MS, type AppDeps } from "./app.ts";
 import { ClaudeBrain } from "./brain.ts";
 import { config } from "./config.ts";
 import { privacyHtml } from "./privacy.ts";
@@ -58,7 +58,7 @@ export function createApp(deps: AppDeps) {
             : "webhook recibido: sin mensajes (estado de entrega u otro evento)",
         );
         for (const msg of incoming) {
-          handleInbound(deps, msg).catch((err) => log(`mensaje ${msg.id}: ${(err as Error).message}`));
+          handleInbound(deps, msg).catch((err) => log(`mensaje no se pudo registrar: ${(err as Error).message}`));
         }
         return;
       }
@@ -116,7 +116,30 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (store instanceof MemoryStore) log("AVISO: sin Supabase; los datos viven en memoria y se pierden al reiniciar");
 
   const deps: AppDeps = { store, brain: new ClaudeBrain(undefined, log), sender: new WhatsAppSender(), log };
-  createApp(deps).listen(config.port, () => log(`Ancla escuchando en :${config.port}`));
+  const server = createApp(deps).listen(config.port, () => log(`Ancla escuchando en :${config.port}`));
+
+  // Al arrancar (por ejemplo, tras un despliegue), retoma los mensajes que el servidor anterior dejó a medias.
+  // Se espera un poco más que el umbral de "a medias" para no pisar al servidor viejo si sigue terminando.
+  setTimeout(() => {
+    recoverInbound(deps)
+      .then((n) => n > 0 && log(`arranque: ${n} mensaje(s) a medias retomado(s)`))
+      .catch((err) => log(`arranque: recuperar mensajes falló: ${(err as Error).message}`));
+  }, STUCK_AFTER_MS + 15_000).unref();
+
+  // Render avisa con SIGTERM antes de apagar (despliegues, reinicios) y espera unos 30 s:
+  // se deja de aceptar conexiones y se terminan los mensajes en curso. Lo que no alcance, se retoma después.
+  process.once("SIGTERM", () => {
+    log(`apagando: ${inFlightCount()} mensaje(s) en curso`);
+    server.close();
+    const started = Date.now();
+    const wait = setInterval(() => {
+      if (inFlightCount() === 0 || Date.now() - started > 25_000) {
+        clearInterval(wait);
+        log(inFlightCount() === 0 ? "apagado limpio" : `apagado con ${inFlightCount()} mensaje(s) a medias (se retoman al volver)`);
+        process.exit(0);
+      }
+    }, 250);
+  });
 
   if (config.internalCron) {
     setInterval(() => runTick(deps).catch((e) => log(`tick: ${(e as Error).message}`)), 5 * 60_000);

@@ -104,3 +104,12 @@ alter table ancla_users add column if not exists routines text[] not null defaul
 alter table ancla_users add column if not exists profile text not null default '';
 alter table ancla_users add column if not exists people jsonb not null default '[]';
 -- (las tablas ancla_reminders y ancla_observations de arriba ya usan 'if not exists': corre el archivo completo.)
+
+-- Mensajes a medias (noviembre 2026): cada mensaje entrante queda 'pending' con su contenido hasta que se
+-- contesta; si el servidor se reinicia a mitad de camino, se retoma. Al terminar se borran el contenido y el número.
+alter table ancla_inbound_ids add column if not exists status text not null default 'done';
+alter table ancla_inbound_ids add column if not exists phone text;
+alter table ancla_inbound_ids add column if not exists payload jsonb;
+alter table ancla_inbound_ids add column if not exists attempts int not null default 0;
+create index if not exists ancla_inbound_pending on ancla_inbound_ids (created_at) where status = 'pending';
+notify pgrst, 'reload schema';

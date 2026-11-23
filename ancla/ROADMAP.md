@@ -1,6 +1,6 @@
 # Ancla: plan hacia el producto final
 
-Estado a 22 de noviembre de 2026. Marca `[x]` lo que ya funciona y `[ ]` lo pendiente.
+Estado a 23 de noviembre de 2026. Marca `[x]` lo que ya funciona y `[ ]` lo pendiente.
 Visión y contexto: [`docs/ideas/muse-tda-braindump.md`](../docs/ideas/muse-tda-braindump.md).
 
 ## Dónde estamos
@@ -23,6 +23,7 @@ Usarla unos 7 días y anotar qué sirve y qué molesta. Es lo que más mejora el
 - [x] Notas de voz de entrada: conectadas con Groq y probadas con una nota real de WhatsApp (formato OGG aceptado)
 - [ ] Borrar la llave vieja de Claude del Codespace y detener el Codespace
 - [ ] Plantilla de WhatsApp aprobada por Meta, para escribir pasadas 24 h sin que hables
+- [x] Mensajes que no se pierden: si el servidor se reinicia o un servicio falla mientras contesta, se retoma solo (hay que correr el SQL nuevo de `supabase/schema.sql` una vez)
 - [ ] Plan de pago en Render (el gratis se duerme y a veces tarda en responder)
 - [ ] Aviso cuando el servidor falle (hoy llega el correo de cron-job.org cuando apaga el reloj; el 22 de noviembre se apagó por 26 fallos seguidos con "Response data too big" y no se conoce la causa)
 - [ ] Cambiar `CRON_SECRET` por una clave aleatoria nueva (opcional)

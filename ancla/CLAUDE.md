@@ -28,6 +28,9 @@ No es un agente autónomo: no tiene herramientas libres (no navega, no manda cor
 - Las pruebas usan un cerebro falso (`FakeBrain`); las que dependen de variables de entorno van en archivos propios.
 - Modelo por defecto `claude-opus-5-5` (variable `ANTHROPIC_MODEL`), con `fallbacks: "default"`.
 
+## Mensajes que no se pierden
+Cada mensaje entrante se guarda como pendiente en `ancla_inbound_ids` (con su contenido) antes de procesarlo, y se cierra (borrando contenido y número) al contestar. La respuesta del cerebro se guarda antes de enviarla, para no repetir acciones si solo falla el envío. Lo que queda a medias más de 3 min lo retoma `recoverInbound` (en cada tick y al arrancar), con la hora original del mensaje; tras 3 intentos o 12 h se le pide a la persona que lo repita. Con `SIGTERM` el servidor espera hasta 25 s a que terminen los mensajes en curso. Si la base no tiene aún las columnas nuevas, funciona como antes (solo evita duplicados).
+
 ## Límites conocidos
 - La cola que ordena los mensajes de cada persona vive en memoria: **una sola instancia** del servidor.
 - WhatsApp solo deja escribir primero dentro de 24 h del último mensaje de la persona; fuera de eso hace falta plantilla aprobada. Los botones solo funcionan dentro de esa ventana.
