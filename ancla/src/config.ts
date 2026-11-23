@@ -41,7 +41,13 @@ export const config = {
   ttsVoice: env("TTS_VOICE", "coral"),
   ttsInstructions: env(
     "TTS_INSTRUCTIONS",
-    "Habla en español como una amiga cercana: cálida, tranquila y natural, sin sonar a locutora ni a asistente virtual.",
+    [
+      "Es una nota de voz de WhatsApp a una amiga de confianza, grabada en el momento, no un anuncio ni un audiolibro.",
+      "Habla relajada y casual, a ritmo de conversación normal, con la entonación que sube y baja como al platicar,",
+      "pequeñas pausas naturales donde respirarías y una sonrisa en la voz.",
+      "Nada de dicción perfecta de locutora, tono de asistente virtual ni de servicio al cliente; no enfatices cada palabra.",
+      "Si hay humor, que se note que te causa gracia.",
+    ].join(" "),
   ),
 
   // Almacenamiento: si hay Supabase se usa; si no, memoria (solo para desarrollo)
