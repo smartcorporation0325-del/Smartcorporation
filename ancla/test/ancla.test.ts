@@ -677,6 +677,7 @@ test("si te hablan por voz, Ancla responde con nota de voz y los botones van en 
   const { deps, brain, sender, store } = setup();
   await getOrCreateUser(store, "584125551");
   const spoken: { text: string; instructions: string }[] = [];
+  deps.voiceButtonsDelayMs = 0;
   deps.synthesizeSpeech = async (text, instructions) => {
     spoken.push({ text, instructions });
     return Buffer.from("ogg");

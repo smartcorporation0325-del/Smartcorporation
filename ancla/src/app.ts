@@ -16,6 +16,8 @@ export interface AppDeps extends Deps {
   fetchMedia?: typeof downloadMedia;
   transcribeAudio?: typeof transcribe;
   synthesizeSpeech?: typeof synthesize;
+  /** Espera entre la nota de voz y sus botones (WhatsApp entrega el audio más lento que el texto). */
+  voiceButtonsDelayMs?: number;
   log?: (msg: string) => void;
 }
 
@@ -51,7 +53,11 @@ async function deliver(
     }
     if (spoke) {
       // Los botones no se pueden pegar a un audio: van en un mensaje de texto corto aparte.
-      if (turn.quickReplies.length > 0) await deps.sender.sendButtons(to, "Toca una opción si te sirve:", turn.quickReplies);
+      // Se espera un poco para que no le lleguen antes que el audio.
+      if (turn.quickReplies.length > 0) {
+        await new Promise((r) => setTimeout(r, deps.voiceButtonsDelayMs ?? 4000));
+        await deps.sender.sendButtons(to, "Toca una opción si te sirve:", turn.quickReplies);
+      }
       return;
     }
   }
