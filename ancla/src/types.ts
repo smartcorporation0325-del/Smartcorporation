@@ -23,7 +23,17 @@ export interface User {
   lastMorningDate: string | null; // "YYYY-MM-DD" local del último buenos días enviado
   lastEveningDate: string | null; // "YYYY-MM-DD" local del último cierre enviado
   checkinAt: string | null; // ISO; próximo check-in programado ("¿empezaste?")
+  companion?: Companion | null; // sesión "acompáñame" en curso
   createdAt: string;
+}
+
+/** Sesión "acompáñame": Ancla la acompaña un rato con check-ins suaves (body doubling). */
+export interface Companion {
+  title: string; // en qué está trabajando
+  itemId: string | null; // el pendiente, si es uno guardado
+  startedAt: string; // ISO
+  endsAt: string; // ISO
+  everyMinutes: number; // cada cuánto la saluda
 }
 
 export interface Item {
@@ -51,6 +61,7 @@ export interface ChatMessage {
 export type TurnInput =
   | { type: "message"; text: string; image?: { mediaType: string; base64: string }; firstContact?: boolean; voiceReply?: boolean }
   | { type: "event"; name: "morning" | "evening" | "checkin" }
+  | { type: "event"; name: "companion_end"; session: Companion }
   | { type: "event"; name: "reminder"; reminders: Reminder[] };
 
 /** Salida estructurada que devuelve el modelo en cada turno. */
@@ -70,6 +81,13 @@ export interface BrainOutput {
   focus_item_ref: string; // "" = sin cambio; "new:0" = el primer new_item
   energy: Energy | "no_change";
   checkin_in_minutes: number; // 0 = no programar
+  companion: {
+    action: "none" | "start" | "stop"; // empezar o terminar una sesión "acompáñame"
+    minutes: number; // duración (0 = la de siempre)
+    every_minutes: number; // cada cuánto un check-in (0 = el de siempre)
+    task_ref: string; // t3, new:0 o vacío
+    title: string; // en qué va a trabajar
+  };
   new_notes: string[];
   voice: string; // "" = sin cambio
   new_routines: string[];

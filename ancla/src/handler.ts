@@ -16,6 +16,8 @@ const OBSERVATION_DAYS_IN_CONTEXT = 7;
 const OBSERVATION_DAYS_TO_CONSOLIDATE = 14;
 const TIMING_DAYS = 60;
 const TIMING_LIMIT = 30;
+const DEFAULT_SESSION_MINUTES = 45;
+const DEFAULT_SESSION_EVERY = 15;
 const DAY_MS = 86_400_000;
 
 export interface Deps {
@@ -183,6 +185,38 @@ export async function applyOutput(
     patch.checkinAt = new Date(now.getTime() + out.checkin_in_minutes * 60_000).toISOString();
   } else if (input.type === "event" && input.name === "checkin") {
     patch.checkinAt = null;
+  }
+
+  // Sesión "acompáñame"
+  const session = user.companion ?? null;
+  const c = out.companion;
+  if (c.action === "start") {
+    const minutes = Math.min(Math.max(c.minutes || DEFAULT_SESSION_MINUTES, 10), 240);
+    const every = Math.min(Math.max(c.every_minutes || DEFAULT_SESSION_EVERY, 5), 60);
+    const it = c.task_ref.startsWith("new:") ? created[Number(c.task_ref.slice(4))] : byRef(c.task_ref);
+    // Empezar la sesión es empezar la tarea: así el estimador de tiempos mide desde aquí.
+    if (it && it.status === "open" && !completed.has(it.id) && !out.started_item_refs.includes(c.task_ref)) {
+      await store.updateItem(it.id, { status: "started", startedAt: nowIso });
+    }
+    const endsAt = now.getTime() + minutes * 60_000;
+    patch.companion = {
+      title: c.title || it?.title || "tu sesión",
+      itemId: it?.id ?? null,
+      startedAt: nowIso,
+      endsAt: new Date(endsAt).toISOString(),
+      everyMinutes: every,
+    };
+    patch.checkinAt = new Date(Math.min(now.getTime() + every * 60_000, endsAt)).toISOString();
+  } else if (c.action === "stop" || (session?.itemId && completed.has(session.itemId))) {
+    // Terminó antes (o terminó la tarea): se cierra sin más check-ins.
+    if (session) {
+      patch.companion = null;
+      if (out.checkin_in_minutes === 0) patch.checkinAt = null;
+    }
+  } else if (session && input.type === "event" && input.name === "checkin" && out.checkin_in_minutes === 0) {
+    // Durante la sesión, los check-ins siguen solos hasta el final (el cierre lo manda companion_end).
+    const next = now.getTime() + session.everyMinutes * 60_000;
+    if (next < Date.parse(session.endsAt) - 2 * 60_000) patch.checkinAt = new Date(next).toISOString();
   }
 
   if (out.new_notes.length) {

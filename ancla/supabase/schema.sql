@@ -112,4 +112,7 @@ alter table ancla_inbound_ids add column if not exists phone text;
 alter table ancla_inbound_ids add column if not exists payload jsonb;
 alter table ancla_inbound_ids add column if not exists attempts int not null default 0;
 create index if not exists ancla_inbound_pending on ancla_inbound_ids (created_at) where status = 'pending';
+
+-- Modo "acompáñame" (noviembre 2026): la sesión en curso de cada persona.
+alter table ancla_users add column if not exists companion jsonb;
 notify pgrst, 'reload schema';

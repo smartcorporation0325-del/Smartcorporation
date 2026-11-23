@@ -282,7 +282,16 @@ async function sendProactive(deps: AppDeps, user: User, ev: DueEvent, now: Date,
   // Marcar primero para no mandar duplicados si algo falla a medias.
   const today = localParts(now, user.timezone).date;
   const mark: Partial<User> | null =
-    ev === "morning" ? { lastMorningDate: today } : ev === "evening" ? { lastEveningDate: today } : ev === "checkin" ? { checkinAt: null } : null;
+    ev === "morning"
+      ? { lastMorningDate: today }
+      : ev === "evening"
+        ? { lastEveningDate: today }
+        : ev === "checkin"
+          ? { checkinAt: null }
+          : ev === "companion_end"
+            ? { companion: null, checkinAt: null }
+            : null;
+  const session = user.companion ?? null;
   let fresh = mark ? await deps.store.updateUser(user.id, mark) : user;
   const turnDeps = { ...deps, now: () => now };
 
@@ -300,7 +309,12 @@ async function sendProactive(deps: AppDeps, user: User, ev: DueEvent, now: Date,
     deps.log?.(`tick ${user.phone} ${ev}: fuera de la ventana de 24 h y sin plantilla; se omite`);
     return;
   }
-  const input: TurnInput = ev === "reminder" ? { type: "event", name: "reminder", reminders } : { type: "event", name: ev };
+  const input: TurnInput =
+    ev === "reminder"
+      ? { type: "event", name: "reminder", reminders }
+      : ev === "companion_end"
+        ? { type: "event", name: "companion_end", session: session! }
+        : { type: "event", name: ev };
   const turn = await runTurn(turnDeps, fresh, input);
   // Si el cerebro falla antes de llegar aquí, el recordatorio sigue pendiente y se reintenta en el próximo tick.
   if (ev === "reminder") await deps.store.setReminderStatus(reminders.map((r) => r.id), "sent");

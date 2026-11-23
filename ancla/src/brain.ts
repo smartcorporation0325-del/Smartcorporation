@@ -59,6 +59,7 @@ export const OUTPUT_SCHEMA = {
     "focus_item_ref",
     "energy",
     "checkin_in_minutes",
+    "companion",
     "new_notes",
     "voice",
     "new_routines",
@@ -103,6 +104,19 @@ export const OUTPUT_SCHEMA = {
     focus_item_ref: { type: "string", description: "t3, new:0 o vacío" },
     energy: { type: "string", enum: ["no_change", ...ENERGIES] },
     checkin_in_minutes: { type: "integer", description: "0 = no programar check-in" },
+    companion: {
+      type: "object",
+      additionalProperties: false,
+      required: ["action", "minutes", "every_minutes", "task_ref", "title"],
+      description: "Sesión 'acompáñame': start para empezarla, stop para terminarla antes, none si no cambia",
+      properties: {
+        action: { type: "string", enum: ["none", "start", "stop"] },
+        minutes: { type: "integer", description: "Duración que pidió; 0 = 45" },
+        every_minutes: { type: "integer", description: "Cada cuánto escribirle; 0 = 15" },
+        task_ref: { type: "string", description: "t3, new:0 o vacío" },
+        title: { type: "string", description: "En qué va a trabajar, corto" },
+      },
+    },
     new_notes: { type: "array", items: { type: "string" } },
     voice: {
       type: "string",
@@ -173,6 +187,16 @@ const EVENT_TEXT: Record<"morning" | "evening" | "checkin", string> = {
 };
 
 function eventText(input: Extract<TurnInput, { type: "event" }>, ctx: BrainContext): string {
+  if (input.name === "companion_end") {
+    const s = input.session;
+    const from = localParts(new Date(s.startedAt), ctx.user.timezone).time;
+    const mins = Math.max(0, Math.round((ctx.now.getTime() - Date.parse(s.startedAt)) / 60_000));
+    return [
+      `EVENTO companion_end: terminó la sesión "acompáñame" de "${s.title}" (empezó a las ${from}, ${mins} min).`,
+      "Escríbele primero tú: celebra que se sentó a hacerlo (aunque haya avanzado poco), pregúntale cómo le fue y si lo terminó.",
+      "Si lo terminó, márcalo como completado. Ofrece seguir otro rato o descansar.",
+    ].join("\n");
+  }
   if (input.name !== "reminder") return EVENT_TEXT[input.name];
   const lines = input.reminders.map(
     (r) => `- Dijo (${whenPhrase(r.saidAt, ctx.now, ctx.user.timezone)}): "${r.quote || r.text}" → recordarle: ${r.text}`,
@@ -240,6 +264,16 @@ export function buildContext(ctx: BrainContext): string {
       const p = localParts(new Date(o.at), user.timezone);
       lines.push(`- ${p.weekday.slice(0, 3)} ${p.time} ${o.state}${o.activity ? ` — ${o.activity}` : ""}${o.note ? ` (${o.note})` : ""}`);
     }
+  }
+  if (user.companion) {
+    const c = user.companion;
+    const t = (iso: string) => localParts(new Date(iso), user.timezone).time;
+    const done = minutesBetween(c.startedAt, now.toISOString());
+    const left = Math.max(0, minutesBetween(now.toISOString(), c.endsAt));
+    const ref = c.itemId ? items.findIndex((i) => i.id === c.itemId) : -1;
+    lines.push(
+      `SESIÓN "ACOMPÁÑAME" EN CURSO: "${c.title}"${ref >= 0 ? ` (${itemRef(ref)})` : ""}, de ${t(c.startedAt)} a ${t(c.endsAt)}; lleva ${done} min, quedan ${left}; check-in cada ${c.everyMinutes} min.`,
+    );
   }
   const timed = ctx.timed ?? [];
   lines.push(...timingContext(timed));
@@ -342,6 +376,16 @@ export function normalizeOutput(raw: unknown): BrainOutput {
     focus_item_ref: str(o.focus_item_ref),
     energy: (["no_change", ...ENERGIES] as string[]).includes(o.energy) ? o.energy : "no_change",
     checkin_in_minutes: Math.min(int(o.checkin_in_minutes), 24 * 60),
+    companion: (() => {
+      const c = (o.companion && typeof o.companion === "object" ? o.companion : {}) as Record<string, unknown>;
+      return {
+        action: c.action === "start" || c.action === "stop" ? c.action : "none",
+        minutes: Math.min(int(c.minutes), 240),
+        every_minutes: Math.min(int(c.every_minutes), 120),
+        task_ref: str(c.task_ref),
+        title: str(c.title).slice(0, 120),
+      } as BrainOutput["companion"];
+    })(),
     new_notes: strArr(o.new_notes).map((n) => n.trim()).filter(Boolean),
     voice: str(o.voice).slice(0, 600),
     reminders: (Array.isArray(o.reminders) ? o.reminders : [])

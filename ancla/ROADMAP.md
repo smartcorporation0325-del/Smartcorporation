@@ -32,7 +32,7 @@ Usarla unos 7 días y anotar qué sirve y qué molesta. Es lo que más mejora el
 ## Etapa 2: mejoras para TDA (por orden de impacto)
 - [x] Botones de respuesta rápida
 - [ ] Estimador real de tiempos: medir inicio y fin y decir "dices 10 min, te toma 35"
-- [ ] Modo "acompáñame": sesión de trabajo con check-ins suaves
+- [x] Modo "acompáñame": sesión de trabajo con check-ins suaves ("acompáñame 45 min con el informe"); hay que correr una línea de SQL (`companion` en `ancla_users`)
 - [ ] Conectar Google Calendar (hoy solo sabe lo que le dices)
 - [x] Respuestas en nota de voz con OpenAI (activas). ElevenLabs quedó conectado en el código, pero sus voces de biblioteca exigen plan pagado. Falta elegir una voz que no suene a IA (`TTS_VOICE`, `TTS_INSTRUCTIONS`; se pueden probar gratis en openai.fm)
 - [ ] Corregir su memoria ("eso no es así") y resumen semanal de "esto aprendí de ti"

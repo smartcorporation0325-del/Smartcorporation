@@ -26,6 +26,7 @@ const userFromRow = (r: Row): User => ({
   lastMorningDate: r.last_morning_date,
   lastEveningDate: r.last_evening_date,
   checkinAt: r.checkin_at,
+  companion: r.companion ?? null,
   createdAt: r.created_at,
 });
 
@@ -47,6 +48,7 @@ const userToRow = (u: Partial<User>): Row => {
     lastMorningDate: "last_morning_date",
     lastEveningDate: "last_evening_date",
     checkinAt: "checkin_at",
+    companion: "companion",
   };
   const row: Row = {};
   for (const [k, v] of Object.entries(u)) if (map[k]) row[map[k]] = v;
@@ -106,9 +108,20 @@ export class SupabaseStore implements Store {
   }
 
   async updateUser(id: string, patch: Partial<User>) {
-    const row = check(await this.db.from("ancla_users").update(userToRow(patch)).eq("id", id).select().single());
-    return userFromRow(row);
+    let row = userToRow(patch);
+    if (this.noCompanionColumn) delete row.companion;
+    let res = await this.db.from("ancla_users").update(row).eq("id", id).select().single();
+    // Si la base aún no tiene la columna de la sesión "acompáñame" (falta correr el SQL), se guarda el resto.
+    if (res.error && "companion" in row && (res.error.code === "PGRST204" || res.error.code === "42703")) {
+      this.noCompanionColumn = true;
+      console.warn("AVISO: falta la columna ancla_users.companion (corre supabase/schema.sql); el modo acompáñame no se guarda");
+      delete row.companion;
+      res = await this.db.from("ancla_users").update(row).eq("id", id).select().single();
+    }
+    return userFromRow(check(res));
   }
+
+  private noCompanionColumn = false;
 
   async listUsers() {
     return (check(await this.db.from("ancla_users").select("*")) ?? []).map(userFromRow);
@@ -261,7 +274,7 @@ export class SupabaseStore implements Store {
     check(
       await this.db
         .from("ancla_users")
-        .update({ notes: [], voice: "", routines: [], profile: "", people: [], energy: "unknown", focus_item_id: null, checkin_at: null })
+        .update({ notes: [], voice: "", routines: [], profile: "", people: [], energy: "unknown", focus_item_id: null, checkin_at: null, ...(this.noCompanionColumn ? {} : { companion: null }) })
         .eq("id", userId),
     );
   }

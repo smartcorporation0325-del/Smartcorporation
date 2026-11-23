@@ -35,6 +35,7 @@ export class MemoryStore implements Store {
       lastMorningDate: null,
       lastEveningDate: null,
       checkinAt: null,
+      companion: null,
       createdAt: new Date().toISOString(),
     };
     this.users.set(user.id, user);
@@ -138,7 +139,7 @@ export class MemoryStore implements Store {
     const u = this.users.get(userId);
     for (const [id, p] of this.pendingInbound) if (p.msg.from === u?.phone) this.pendingInbound.delete(id);
     if (u) {
-      Object.assign(u, { notes: [], voice: "", routines: [], profile: "", people: [], energy: "unknown", focusItemId: null, checkinAt: null });
+      Object.assign(u, { notes: [], voice: "", routines: [], profile: "", people: [], energy: "unknown", focusItemId: null, checkinAt: null, companion: null });
     }
   }
 

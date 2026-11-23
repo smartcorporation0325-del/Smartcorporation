@@ -7,7 +7,7 @@ const GRACE_MINUTES = 90;
 /** Un recordatorio que lleva más de esto vencido ya no se manda como aviso (sale como "VENCIDO" en el contexto). */
 const REMINDER_STALE_HOURS = 6;
 
-export type DueEvent = "reminder" | "morning" | "evening" | "checkin";
+export type DueEvent = "reminder" | "morning" | "evening" | "checkin" | "companion_end";
 
 /** Recordatorios que ya les toca salir (vencidos hace menos de REMINDER_STALE_HOURS). */
 export function dueReminders(pending: Reminder[], now: Date): Reminder[] {
@@ -24,6 +24,12 @@ export function dueReminders(pending: Reminder[], now: Date): Reminder[] {
 export function dueEvent(user: User, now: Date, pending: Reminder[] = []): DueEvent | null {
   // Los recordatorios los pidió ella, así que salen aunque haya apagado los mensajes proactivos.
   if (dueReminders(pending, now).length) return "reminder";
+  // La sesión "acompáñame" también la pidió ella: sus check-ins y su cierre salen siempre.
+  const checkinDue = Boolean(user.checkinAt && new Date(user.checkinAt).getTime() <= now.getTime());
+  if (user.companion) {
+    if (Date.parse(user.companion.endsAt) <= now.getTime()) return "companion_end";
+    if (checkinDue) return "checkin";
+  }
   if (!user.proactive) return null;
   const local = localParts(now, user.timezone);
 
@@ -32,7 +38,7 @@ export function dueEvent(user: User, now: Date, pending: Reminder[] = []): DueEv
     return diff >= 0 && diff < GRACE_MINUTES;
   };
 
-  if (user.checkinAt && new Date(user.checkinAt).getTime() <= now.getTime()) return "checkin";
+  if (checkinDue) return "checkin";
   if (user.lastMorningDate !== local.date && inWindow(user.morningTime)) return "morning";
   if (user.lastEveningDate !== local.date && inWindow(user.eveningTime)) return "evening";
   return null;
