@@ -55,9 +55,13 @@ export async function synthesize(text: string, instructions: string): Promise<Bu
       : await openaiRequest(text, instructions);
   if (!res.ok) {
     // Solo el estado y el código: nunca el contenido del mensaje.
-    const body = (await res.json().catch(() => null)) as { error?: { code?: string }; detail?: { status?: string } } | null;
+    const body = (await res.json().catch(() => null)) as
+      | { error?: { code?: string }; detail?: { status?: string; message?: string } }
+      | null;
     const code = body?.error?.code ?? body?.detail?.status ?? "";
-    throw new Error(`Voz ${provider === "elevenlabs" ? "ElevenLabs " : ""}${res.status} ${code}`.trim());
+    // ElevenLabs explica el motivo de su cuenta (plan, voz, formato) en detail.message; no trae el texto enviado.
+    const why = provider === "elevenlabs" && body?.detail?.message ? `: ${body.detail.message.slice(0, 200)}` : "";
+    throw new Error(`Voz ${provider === "elevenlabs" ? "ElevenLabs " : ""}${res.status} ${code}${why}`.trim());
   }
   const audio = Buffer.from(await res.arrayBuffer());
   if (!isOggOpus(audio)) throw new Error("La voz no llegó en formato Ogg/Opus (WhatsApp no la mostraría como nota de voz)");

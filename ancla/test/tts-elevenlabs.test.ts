@@ -36,7 +36,7 @@ test("los errores de ElevenLabs dicen el motivo sin el texto del mensaje", async
   reply = { status: 401, body: JSON.stringify({ detail: { status: "detected_unusual_activity", message: "x" } }) };
   await assert.rejects(
     () => synthesize("algo privado", "x"),
-    (err: Error) => err.message === "Voz ElevenLabs 401 detected_unusual_activity" && !err.message.includes("privado"),
+    (err: Error) => err.message === "Voz ElevenLabs 401 detected_unusual_activity: x" && !err.message.includes("privado"),
   );
   server.close();
 });
