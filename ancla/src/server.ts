@@ -7,7 +7,7 @@ import { config } from "./config.ts";
 import { privacyHtml } from "./privacy.ts";
 import { MemoryStore } from "./store/memory.ts";
 import { SupabaseStore } from "./store/supabase.ts";
-import { parseWebhook, verifySignature, WhatsAppSender } from "./whatsapp.ts";
+import { ensureWebhookSubscription, parseWebhook, verifySignature, WhatsAppSender } from "./whatsapp.ts";
 
 const log = (msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`);
 
@@ -117,6 +117,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
   const deps: AppDeps = { store, brain: new ClaudeBrain(undefined, log), sender: new WhatsAppSender(), log };
   const server = createApp(deps).listen(config.port, () => log(`Ancla escuchando en :${config.port}`));
+
+  // Que Meta siga mandando los mensajes de la gente a este servidor.
+  ensureWebhookSubscription()
+    .then(log)
+    .catch((err) => log(`WhatsApp: revisar la conexión de la cuenta falló: ${(err as Error).message}`));
 
   // Al arrancar (por ejemplo, tras un despliegue), retoma los mensajes que el servidor anterior dejó a medias.
   // Se espera un poco más que el umbral de "a medias" para no pisar al servidor viejo si sigue terminando.

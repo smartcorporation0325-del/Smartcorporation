@@ -124,6 +124,26 @@ export class WhatsAppSender implements Sender {
   }
 }
 
+/**
+ * Revisa que la cuenta de WhatsApp Business siga conectada (suscrita) a la app y la reconecta.
+ * Si esa conexión se pierde, Meta deja de mandar los mensajes de la gente al webhook, aunque el webhook
+ * de la app esté bien configurado (la prueba de Meta llega pero los mensajes reales no).
+ * Reconectar una cuenta ya conectada no cambia nada. Devuelve un texto para los registros.
+ */
+export async function ensureWebhookSubscription(fetchFn: typeof fetch = fetch): Promise<string> {
+  const waba = config.whatsappBusinessAccountId;
+  if (!waba || !config.whatsappToken) return "WhatsApp: sin WHATSAPP_BUSINESS_ACCOUNT_ID, no se revisa la conexión de la cuenta";
+  const url = graph(`${waba}/subscribed_apps`);
+  const auth = { Authorization: `Bearer ${config.whatsappToken}` };
+  const before = await fetchFn(url, { headers: auth });
+  if (!before.ok) return `WhatsApp: no se pudo revisar la conexión de la cuenta (${before.status}: ${await before.text()})`;
+  const list = ((await before.json()) as { data?: { whatsapp_business_api_data?: { name?: string } }[] }).data ?? [];
+  const names = list.map((a) => a.whatsapp_business_api_data?.name ?? "?").join(", ") || "ninguna";
+  const res = await fetchFn(url, { method: "POST", headers: auth });
+  if (!res.ok) return `WhatsApp: apps conectadas antes: ${names}. No se pudo reconectar (${res.status}: ${await res.text()})`;
+  return `WhatsApp: apps conectadas antes: ${names}. Cuenta conectada a la app: OK`;
+}
+
 /** Descarga un archivo multimedia (audio/imagen) que la persona mandó. */
 export async function downloadMedia(mediaId: string): Promise<{ data: Buffer; mimeType: string }> {
   const auth = { Authorization: `Bearer ${config.whatsappToken}` };

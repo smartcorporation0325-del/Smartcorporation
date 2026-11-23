@@ -94,6 +94,7 @@ Pruebas automáticas (no necesitan llaves): `npm test` y `npm run typecheck`.
    - URL: `https://TU-DOMINIO/webhook`
    - Token de verificación: el mismo que pusiste en `WHATSAPP_VERIFY_TOKEN`
    - Suscríbete al campo `messages`.
+   - Pon también `WHATSAPP_BUSINESS_ACCOUNT_ID` (el identificador de la cuenta de WhatsApp Business, en WhatsApp → Paso 1. Probar). Al arrancar, el servidor revisa que la cuenta siga conectada a la app y la reconecta: si esa conexión se pierde, la prueba del botón **Test** de Meta llega pero los mensajes reales no. El resultado queda en los registros como `WhatsApp: apps conectadas antes: … Cuenta conectada a la app: OK`.
 5. **Mensajes proactivos:** programa un cron cada 10 minutos (cron-job.org, GitHub Actions, el cron de tu hosting…) que llame:
    ```bash
    curl -X POST https://TU-DOMINIO/cron/tick -H "Authorization: Bearer $CRON_SECRET"

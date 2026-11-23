@@ -20,6 +20,9 @@ export const config = {
   whatsappPhoneNumberId: env("WHATSAPP_PHONE_NUMBER_ID"),
   whatsappVerifyToken: env("WHATSAPP_VERIFY_TOKEN"),
   whatsappAppSecret: env("WHATSAPP_APP_SECRET"),
+  // Id de la cuenta de WhatsApp Business (no es secreto). Si está, al arrancar se revisa que la cuenta
+  // siga conectada a la app (si se desconecta, Meta deja de mandar los mensajes al webhook) y se reconecta.
+  whatsappBusinessAccountId: env("WHATSAPP_BUSINESS_ACCOUNT_ID"),
   graphApiVersion: env("GRAPH_API_VERSION", "v23.0"),
   // Plantilla aprobada por Meta para escribir fuera de la ventana de 24 h.
   // Debe tener un parámetro {{1}} en el cuerpo. Vacío = no escribir fuera de la ventana.
