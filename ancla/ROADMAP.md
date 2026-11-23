@@ -34,7 +34,7 @@ Usarla unos 7 días y anotar qué sirve y qué molesta. Es lo que más mejora el
 - [ ] Estimador real de tiempos: medir inicio y fin y decir "dices 10 min, te toma 35"
 - [ ] Modo "acompáñame": sesión de trabajo con check-ins suaves
 - [ ] Conectar Google Calendar (hoy solo sabe lo que le dices)
-- [x] Respuestas en nota de voz: probadas con OpenAI (funciona, pero suena a IA); conectado ElevenLabs como alternativa más humana
+- [ ] Respuestas en nota de voz: **en pausa** (23 nov.). El código funciona con OpenAI (sonaba a IA) y con ElevenLabs (las voces de su biblioteca exigen plan pagado). Para reactivarla basta con volver a poner las llaves en Render; responde en texto mientras no estén
 - [ ] Corregir su memoria ("eso no es así") y resumen semanal de "esto aprendí de ti"
 - [ ] Horas de silencio y pausa ("no me escribas hoy")
 
