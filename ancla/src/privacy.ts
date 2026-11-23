@@ -21,7 +21,7 @@ export function privacyHtml(operator: string, contactEmail: string): string {
 <ul>
 <li>Tu número de WhatsApp y el nombre de tu perfil de WhatsApp.</li>
 <li>Los mensajes que le escribes a Ancla y las respuestas que recibes. Si mandas una nota de voz, guardamos su transcripción en texto, no el audio. Si mandas una foto, la analizamos para responderte y guardamos solo el texto que la acompañe.</li>
-<li>Lo que Ancla aprende para ayudarte: tus pendientes y recordatorios, tus rutinas, las personas que mencionas, notas sobre ti, cómo te gusta que te hablen y observaciones sobre lo que haces y cómo te sientes durante el día.</li>
+<li>Lo que Ancla aprende para ayudarte: tus pendientes y recordatorios, las sesiones de acompañamiento, tus rutinas, las personas que mencionas, notas sobre ti, cómo te gusta que te hablen y observaciones sobre lo que haces y cómo te sientes durante el día.</li>
 <li>Tu zona horaria y tus horarios de mensajes.</li>
 </ul>
 

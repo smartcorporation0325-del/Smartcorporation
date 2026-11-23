@@ -47,6 +47,12 @@ Inspirado en el "Instantáneo" y el "Pensar" de Muse. El modo se elige solo, con
 
 Por defecto **los tres modos usan el mismo modelo**, así que Ancla suena igual que antes. Para probar un modelo más rápido en el modo rápido, en Render agrega `ANTHROPIC_FAST_MODEL` (por ejemplo `claude-sonnet-5-5`) y compara. Cada respuesta deja una línea en los registros, solo con cifras (sin contenido ni teléfonos), por ejemplo `turno: modo=fast modelo=… esfuerzo=low 2310ms entrada=… salida=… cache=…`. Para volver atrás, borra la variable. Otras variables: `ANTHROPIC_DEEP_MODEL` y `ANTHROPIC_DEEP_EFFORT` (por defecto `high`). Haiku no tiene respaldo del lado del servidor y es el que más puede cambiar el tono: compara con cuidado antes de dejarlo.
 
+## Modo "acompáñame"
+Escribe "acompáñame 45 min con el informe" (o acepta cuando Ancla te lo ofrece) y abre una sesión: te da el primer paso, te escribe cortito cada 15 min ("¿cómo vas? ¿sigues con eso?", con botones como "Voy bien", "Me distraje", "Ya terminé") y al final celebra lo que hiciste. Si terminas antes o dices que paras, la sesión se cierra. Empezar la sesión marca la tarea como empezada, así el estimador de tiempos mide cuánto te tomó. Los check-ins de la sesión salen aunque hayas apagado los mensajes por iniciativa propia, porque la pediste tú. Necesita la columna `companion` de `ancla_users` (ver `supabase/schema.sql`).
+
+## Estimador real de tiempos
+Cuando dices cuánto te toma algo ("eso me toma 10 min"), Ancla lo guarda; cuando le dices que empezaste y que terminaste, mide cuánto te tomó de verdad. Con 3 tareas medidas calcula tu factor (la mediana de "real ÷ calculado", para que un caso raro no lo distorsione) y te lo dice con cariño: *"dices 10 min, pero estas cosas te suelen tomar unos 25; ¿lo agendamos con 30?"*. Se ignoran las mediciones de menos de 1 minuto y de más de 8 horas. Usa los últimos 60 días y no guarda datos nuevos.
+
 ## Bienvenida y ayuda
 La primera vez que escribe un número nuevo, Ancla manda una bienvenida corta (quién es, qué puede hacer, que no es un servicio médico, cómo se cuidan los datos y `/olvidar todo`) con los botones **Empezar** y **¿Qué puedes hacer?**. Después responde normal, sin volver a presentarse. Los comandos `/ayuda` y `/privacidad` responden al instante con texto fijo, sin gastar IA. Además, el modelo enseña como mucho un dato útil por día y solo cuando viene al caso. La dirección pública para el enlace de privacidad sale sola de `RENDER_EXTERNAL_URL` (o de `PUBLIC_URL`).
 
