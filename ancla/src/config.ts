@@ -50,6 +50,12 @@ export const config = {
     ].join(" "),
   ),
 
+  // Voz con ElevenLabs (suena más humana). Si hay llave e id de voz, se usa en lugar de OpenAI.
+  elevenlabsApiKey: env("ELEVENLABS_API_KEY"),
+  elevenlabsVoiceId: env("ELEVENLABS_VOICE_ID"),
+  elevenlabsModel: env("ELEVENLABS_MODEL", "eleven_multilingual_v2"),
+  elevenlabsUrl: env("ELEVENLABS_URL", "https://api.elevenlabs.io"),
+
   // Almacenamiento: si hay Supabase se usa; si no, memoria (solo para desarrollo)
   supabaseUrl: env("SUPABASE_URL"),
   supabaseServiceRoleKey: env("SUPABASE_SERVICE_ROLE_KEY"),
