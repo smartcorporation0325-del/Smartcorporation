@@ -27,3 +27,8 @@ test("si Meta rechaza la reconexión, lo dice en los registros sin romper el arr
   const msg = await ensureWebhookSubscription(fake);
   assert.match(msg, /antes: Ancla.*No se pudo reconectar \(403/);
 });
+
+test("el texto de la plantilla va sin saltos de línea (Meta los rechaza)", async () => {
+  const { templateParam } = await import("../src/whatsapp.ts");
+  assert.equal(templateParam("Buenos días 🌞\n\nTu 1 cosa:\tllamar     al dentista "), "Buenos días 🌞 Tu 1 cosa: llamar   al dentista");
+});

@@ -118,10 +118,15 @@ export class WhatsAppSender implements Sender {
       template: {
         name: config.whatsappTemplateName,
         language: { code: config.whatsappTemplateLang },
-        components: [{ type: "body", parameters: [{ type: "text", text: param.slice(0, 1000) }] }],
+        components: [{ type: "body", parameters: [{ type: "text", text: templateParam(param) }] }],
       },
     });
   }
+}
+
+/** Meta rechaza parámetros de plantilla con saltos de línea, tabulaciones o más de 4 espacios seguidos. */
+export function templateParam(text: string): string {
+  return text.replace(/\s*\n+\s*/g, " ").replace(/\t/g, " ").replace(/ {4,}/g, "   ").trim().slice(0, 1000);
 }
 
 /**
