@@ -1,0 +1,3 @@
+{
+  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- . ':(exclude)ancla' ':(exclude)docs' ':(exclude)vercel.json'"
+}

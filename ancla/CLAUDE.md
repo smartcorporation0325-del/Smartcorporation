@@ -36,5 +36,7 @@ No es un agente autónomo: no tiene herramientas libres (no navega, no manda cor
 ## Despliegue
 Render despliega automáticamente la rama `claude/muse-tda-braindump-8un9c3` (carpeta `ancla`). No borrar ni renombrar esa rama sin cambiarla antes en Render. No crear pull requests salvo que se pida.
 
+El repositorio también está conectado a **Vercel** (el CRM de la raíz). Sin las variables de Supabase del CRM, su compilación falla en `/login` (pasa igual antes de Ancla). `vercel.json` hace que Vercel se salte los despliegues cuando un commit solo toca `ancla/` o `docs/`, para no recibir correos de "deployment failed" por cada cambio de Ancla.
+
 ## Cómo colaborar con quien lo lleva
 No es una persona técnica en infraestructura: dar instrucciones **precisas, paso a paso, con los nombres exactos de los botones**, y pedir captura cuando algo pueda variar. Confirmar antes de acciones irreversibles o públicas. Hablar en español.
