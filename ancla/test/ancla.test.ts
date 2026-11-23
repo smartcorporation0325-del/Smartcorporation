@@ -668,7 +668,7 @@ test("el contexto le dice al modelo en qué modo responde, y el prompt sabe ofre
 
 test("speechText deja el texto listo para leerse en voz alta, y la voz usa el acento del país", () => {
   assert.equal(speechText("Hola 🙂 empezamos:\n\n• Abre la app\n- Mira https://ancla.onrender.com/privacy ahora"), "Hola empezamos:\nAbre la app\nMira ahora");
-  assert.match(voiceInstructions({ phone: "584125551" }), /como una amiga cercana.*acento de Venezuela/s);
+  assert.match(voiceInstructions({ phone: "584125551" }), /nota de voz de WhatsApp a una amiga.*acento de Venezuela/s);
   assert.match(voiceInstructions({ phone: "18095551234" }), /acento de República Dominicana/);
   assert.match(voiceInstructions({ phone: "12125551234" }), /acento latinoamericano neutro/);
 });
