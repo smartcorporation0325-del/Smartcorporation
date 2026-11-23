@@ -37,8 +37,11 @@ async function deliver(
   turn: TurnResult,
   inWindow = true,
   voice?: { instructions: string },
-) {
-  if (!inWindow) return deps.sender.sendTemplate(to, turn.reply);
+): Promise<"voz" | "texto"> {
+  if (!inWindow) {
+    await deps.sender.sendTemplate(to, turn.reply);
+    return "texto";
+  }
   // Respuesta en nota de voz (si hay servicio y cabe); cualquier fallo cae a texto para no dejarla sin respuesta.
   if (voice && turn.reply.length <= MAX_VOICE_CHARS) {
     let spoke = false;
@@ -58,11 +61,12 @@ async function deliver(
         await new Promise((r) => setTimeout(r, deps.voiceButtonsDelayMs ?? 4000));
         await deps.sender.sendButtons(to, "Toca una opción si te sirve:", turn.quickReplies);
       }
-      return;
+      return "voz";
     }
   }
-  if (turn.quickReplies.length > 0) return deps.sender.sendButtons(to, turn.reply, turn.quickReplies);
-  return deps.sender.sendText(to, turn.reply);
+  if (turn.quickReplies.length > 0) await deps.sender.sendButtons(to, turn.reply, turn.quickReplies);
+  else await deps.sender.sendText(to, turn.reply);
+  return "texto";
 }
 
 // Las notas de voz normales pesan unos cientos de KB; esto evita pagar por audios enormes.
@@ -244,8 +248,8 @@ async function respond(deps: AppDeps, msg: InboundMessage, onReply: (r: { reply:
   if (mode === "deep") await deps.sender.sendText(msg.from, "Dame un momentito, esto lo quiero pensar bien.");
   const turn = await runTurn(deps, user, input, historyText, mode);
   await onReply(turn);
-  await deliver(deps, msg.from, turn, true, voice ? { instructions: voiceInstructions(user) } : undefined);
-  deps.log?.(`respuesta enviada (${turn.reply.length} caracteres, ${turn.quickReplies.length} botones${voice ? ", voz" : ""})`);
+  const sentAs = await deliver(deps, msg.from, turn, true, voice ? { instructions: voiceInstructions(user) } : undefined);
+  deps.log?.(`respuesta enviada (${turn.reply.length} caracteres, ${turn.quickReplies.length} botones${sentAs === "voz" ? ", voz" : ""})`);
 }
 
 /** Revisa a todas las personas y manda los mensajes proactivos que toquen. Llamar cada ~10 min. */
