@@ -73,6 +73,15 @@ export class MemoryStore implements Store {
     if (i) Object.assign(i, patch);
   }
 
+  async listTimedItemsSince(userId: string, sinceIso: string, limit: number) {
+    return [...this.items.values()]
+      .filter((i) => i.userId === userId && i.status === "done" && i.doneAt !== null && i.doneAt >= sinceIso)
+      .filter((i) => i.startedAt && i.estimateMinutes)
+      .sort((a, b) => a.doneAt!.localeCompare(b.doneAt!))
+      .slice(-limit)
+      .map((i) => ({ ...i }));
+  }
+
   async countDoneSince(userId: string, sinceIso: string) {
     return [...this.items.values()].filter(
       (i) => i.userId === userId && i.status === "done" && i.doneAt !== null && i.doneAt >= sinceIso,

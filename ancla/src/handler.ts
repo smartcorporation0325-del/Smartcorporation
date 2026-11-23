@@ -14,6 +14,8 @@ const MAX_PENDING_REMINDERS = 40;
 const REMINDER_HORIZON_DAYS = 60;
 const OBSERVATION_DAYS_IN_CONTEXT = 7;
 const OBSERVATION_DAYS_TO_CONSOLIDATE = 14;
+const TIMING_DAYS = 60;
+const TIMING_LIMIT = 30;
 const DAY_MS = 86_400_000;
 
 export interface Deps {
@@ -63,15 +65,17 @@ export async function runTurn(
   const { store } = deps;
 
   const since = new Date(now.getTime() - OBSERVATION_DAYS_IN_CONTEXT * DAY_MS).toISOString();
-  const [items, history, doneToday, reminders, observations] = await Promise.all([
+  const timingSince = new Date(now.getTime() - TIMING_DAYS * DAY_MS).toISOString();
+  const [items, history, doneToday, reminders, observations, timed] = await Promise.all([
     store.listActiveItems(user.id),
     store.recentMessages(user.id, HISTORY_LIMIT),
     store.countDoneSince(user.id, localMidnightIso(now, user.timezone)),
     store.listPendingReminders(user.id),
     store.listObservationsSince(user.id, since, 40),
+    store.listTimedItemsSince(user.id, timingSince, TIMING_LIMIT),
   ]);
 
-  const out = await deps.brain.think({ user, items, history, input, now, doneToday, reminders, observations, mode });
+  const out = await deps.brain.think({ user, items, history, input, now, doneToday, reminders, observations, mode, timed });
   await applyOutput(store, user, items, reminders, out, now, input);
 
   if (input.type === "message") {
@@ -107,6 +111,12 @@ export async function applyOutput(
       estimateMinutes: n.estimate_minutes || null,
     })),
   );
+
+  // Su cálculo de minutos para pendientes que ya existían (para medir después cuánto le tomó de verdad)
+  for (const e of out.estimate_updates) {
+    const it = byRef(e.ref);
+    if (it) await store.updateItem(it.id, { estimateMinutes: e.minutes });
+  }
 
   // Cambios de estado (completado gana sobre empezado si vienen los dos)
   const completed = new Set(out.completed_item_refs.map(byRef).filter(Boolean).map((i) => i!.id));

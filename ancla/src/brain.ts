@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config.ts";
 import { countryFromPhone } from "./dialect.ts";
+import { estimateFactor, minutesBetween, realisticMinutes, timingContext, timingSamples } from "./estimates.ts";
 import { MODE_LABEL, planFor, type Mode } from "./modes.ts";
 import { cleanQuickReplies } from "./quickReplies.ts";
 import { CONSOLIDATE_PROMPT, SYSTEM_PROMPT } from "./prompt.ts";
@@ -17,6 +18,7 @@ export interface BrainContext {
   reminders: Reminder[]; // recordatorios pendientes; su posición define la ref (r1 = reminders[0])
   observations: Observation[]; // lo observado en los últimos días
   mode?: Mode; // cuánto razonar en esta respuesta (por defecto, normal)
+  timed?: Item[]; // tareas terminadas con inicio y cálculo (estimador de tiempos)
 }
 
 /** El "cerebro": decide qué responder y qué cambios hacer. Se puede sustituir en tests. */
@@ -50,6 +52,7 @@ export const OUTPUT_SCHEMA = {
   required: [
     "reply",
     "new_items",
+    "estimate_updates",
     "started_item_refs",
     "completed_item_refs",
     "dropped_item_refs",
@@ -80,8 +83,18 @@ export const OUTPUT_SCHEMA = {
           title: { type: "string" },
           first_step: { type: "string", description: "Acción física de menos de 2 minutos; vacío si no es task" },
           due: { type: "string", description: "YYYY-MM-DD o YYYY-MM-DDTHH:MM; vacío si no hay" },
-          estimate_minutes: { type: "integer", description: "0 si no se sabe" },
+          estimate_minutes: { type: "integer", description: "Minutos que ELLA dijo que le toma; 0 si no lo dijo (no lo inventes)" },
         },
+      },
+    },
+    estimate_updates: {
+      type: "array",
+      description: "Su cálculo de minutos para un pendiente que ya existe (t1, t2...), si lo dijo en este mensaje",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["ref", "minutes"],
+        properties: { ref: { type: "string" }, minutes: { type: "integer" } },
       },
     },
     started_item_refs: { type: "array", items: { type: "string" } },
@@ -228,6 +241,10 @@ export function buildContext(ctx: BrainContext): string {
       lines.push(`- ${p.weekday.slice(0, 3)} ${p.time} ${o.state}${o.activity ? ` — ${o.activity}` : ""}${o.note ? ` (${o.note})` : ""}`);
     }
   }
+  const timed = ctx.timed ?? [];
+  lines.push(...timingContext(timed));
+  const factor = estimateFactor(timingSamples(timed));
+
   const focusIndex = items.findIndex((i) => i.id === user.focusItemId);
   if (items.length === 0) {
     lines.push("Pendientes: ninguno guardado.");
@@ -235,9 +252,16 @@ export function buildContext(ctx: BrainContext): string {
     lines.push("Pendientes:");
     items.forEach((it, idx) => {
       const extra = [
-        it.status === "started" ? "EMPEZADA" : "",
+        it.status === "started"
+          ? `EMPEZADA${it.startedAt ? ` hace ${minutesBetween(it.startedAt, now.toISOString())} min` : ""}`
+          : "",
         it.due ? `fecha: ${it.due}` : "",
-        it.estimateMinutes ? `~${it.estimateMinutes} min` : "",
+        it.estimateMinutes
+          ? `ella calcula ~${it.estimateMinutes} min${(() => {
+              const real = realisticMinutes(it.estimateMinutes, factor);
+              return real ? `, por cómo le va, cuenta ~${real}` : "";
+            })()}`
+          : "",
         it.firstStep ? `primer paso: ${it.firstStep}` : "",
         idx === focusIndex ? "← ES SU 1 COSA DE HOY" : "",
       ].filter(Boolean);
@@ -306,8 +330,12 @@ export function normalizeOutput(raw: unknown): BrainOutput {
         title: i.title.trim(),
         first_step: str(i.first_step),
         due: str(i.due),
-        estimate_minutes: int(i.estimate_minutes),
+        estimate_minutes: Math.min(int(i.estimate_minutes), 24 * 60),
       })),
+    estimate_updates: (Array.isArray(o.estimate_updates) ? o.estimate_updates : [])
+      .filter((e: any) => e && typeof e.ref === "string" && int(e.minutes) > 0)
+      .slice(0, 5)
+      .map((e: any) => ({ ref: e.ref.trim(), minutes: Math.min(int(e.minutes), 24 * 60) })),
     started_item_refs: strArr(o.started_item_refs),
     completed_item_refs: strArr(o.completed_item_refs),
     dropped_item_refs: strArr(o.dropped_item_refs),

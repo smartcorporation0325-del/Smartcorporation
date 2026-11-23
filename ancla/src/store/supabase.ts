@@ -146,12 +146,29 @@ export class SupabaseStore implements Store {
     return (rows ?? []).map(itemFromRow);
   }
 
-  async updateItem(id: string, patch: Partial<Pick<Item, "status" | "startedAt" | "doneAt">>) {
+  async updateItem(id: string, patch: Partial<Pick<Item, "status" | "startedAt" | "doneAt" | "estimateMinutes">>) {
     const row: Row = {};
     if (patch.status !== undefined) row.status = patch.status;
     if (patch.startedAt !== undefined) row.started_at = patch.startedAt;
     if (patch.doneAt !== undefined) row.done_at = patch.doneAt;
+    if (patch.estimateMinutes !== undefined) row.estimate_minutes = patch.estimateMinutes;
     check(await this.db.from("ancla_items").update(row).eq("id", id));
+  }
+
+  async listTimedItemsSince(userId: string, sinceIso: string, limit: number) {
+    const rows = check(
+      await this.db
+        .from("ancla_items")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("status", "done")
+        .gte("done_at", sinceIso)
+        .not("started_at", "is", null)
+        .gt("estimate_minutes", 0)
+        .order("done_at", { ascending: false })
+        .limit(limit),
+    );
+    return (rows ?? []).reverse().map(itemFromRow);
   }
 
   async countDoneSince(userId: string, sinceIso: string) {

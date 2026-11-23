@@ -29,8 +29,10 @@ export interface Store {
 
   listActiveItems(userId: string): Promise<Item[]>; // open + started
   addItems(items: NewItem[]): Promise<Item[]>;
-  updateItem(id: string, patch: Partial<Pick<Item, "status" | "startedAt" | "doneAt">>): Promise<void>;
+  updateItem(id: string, patch: Partial<Pick<Item, "status" | "startedAt" | "doneAt" | "estimateMinutes">>): Promise<void>;
   countDoneSince(userId: string, sinceIso: string): Promise<number>;
+  /** Tareas terminadas desde esa fecha que tienen inicio y cálculo de minutos (para el estimador de tiempos). */
+  listTimedItemsSince(userId: string, sinceIso: string, limit: number): Promise<Item[]>;
 
   addMessage(msg: Omit<ChatMessage, "createdAt">): Promise<void>;
   recentMessages(userId: string, limit: number): Promise<ChatMessage[]>; // orden cronológico

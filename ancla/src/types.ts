@@ -61,8 +61,9 @@ export interface BrainOutput {
     title: string;
     first_step: string;
     due: string; // "" si no hay
-    estimate_minutes: number; // 0 si no se sabe
+    estimate_minutes: number; // minutos que ELLA calcula; 0 si no lo dijo
   }[];
+  estimate_updates: { ref: string; minutes: number }[]; // su cálculo para un pendiente que ya existe
   started_item_refs: string[]; // refs cortas tipo "t3"
   completed_item_refs: string[];
   dropped_item_refs: string[];
