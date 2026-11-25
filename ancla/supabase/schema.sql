@@ -113,6 +113,44 @@ alter table ancla_inbound_ids add column if not exists payload jsonb;
 alter table ancla_inbound_ids add column if not exists attempts int not null default 0;
 create index if not exists ancla_inbound_pending on ancla_inbound_ids (created_at) where status = 'pending';
 
+-- Costo por persona (noviembre 2026): una fila por llamada a Claude o nota de voz. Solo cifras, nunca contenido.
+create table if not exists ancla_usage (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references ancla_users(id) on delete cascade,
+  at timestamptz not null default now(),
+  kind text not null, -- message, event, memory o voice
+  model text not null default '',
+  input_tokens int not null default 0, -- en notas de voz: caracteres
+  output_tokens int not null default 0,
+  cache_read_tokens int not null default 0,
+  cache_write_tokens int not null default 0,
+  cost_usd numeric(12,6) not null default 0
+);
+create index if not exists ancla_usage_user_time on ancla_usage (user_id, at desc);
+alter table ancla_usage enable row level security;
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant select, insert, update, delete on ancla_usage to service_role;
+    grant usage, select on all sequences in schema public to service_role;
+  end if;
+end $$;
+
+-- Resumen por persona y día (en su hora local), para mirarlo en el Table Editor de Supabase.
+create or replace view ancla_usage_daily with (security_invoker = true) as
+select
+  u.name,
+  right(u.phone, 4) as telefono_final,
+  (g.at at time zone u.timezone)::date as dia,
+  count(*) filter (where g.kind = 'message') as mensajes,
+  count(*) filter (where g.kind = 'event') as mensajes_de_ancla,
+  count(*) filter (where g.kind = 'voice') as notas_de_voz,
+  round(sum(g.cost_usd), 4) as costo_usd
+from ancla_usage g
+join ancla_users u on u.id = g.user_id
+group by u.name, u.phone, dia
+order by dia desc, costo_usd desc;
+
 -- Modo "acompáñame" (noviembre 2026): la sesión en curso de cada persona.
 alter table ancla_users add column if not exists companion jsonb;
 notify pgrst, 'reload schema';

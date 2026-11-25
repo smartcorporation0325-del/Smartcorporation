@@ -3,6 +3,7 @@ import { config } from "./config.ts";
 import { chooseMode, type Mode } from "./modes.ts";
 import { countryFromPhone } from "./dialect.ts";
 import type { Store } from "./store/index.ts";
+import { costUsd, type Usage, type UsageRecord } from "./pricing.ts";
 import { isValidTime, isValidTimeZone, localMidnightIso, localToIso } from "./time.ts";
 import type { BrainOutput, Item, Reminder, TurnInput, User } from "./types.ts";
 
@@ -24,6 +25,13 @@ export interface Deps {
   store: Store;
   brain: Brain;
   now?: () => Date;
+}
+
+/** Guarda el costo de una llamada sin frenar ni romper el turno si la base falla. */
+export function recordUsage(store: Store, userId: string, kind: UsageRecord["kind"], u: Usage): void {
+  store.addUsage({ ...u, userId, kind, costUsd: costUsd(u) }).catch((err) => {
+    console.warn(`uso no registrado: ${(err as Error).message}`);
+  });
 }
 
 export async function findOrCreateUser(
@@ -77,7 +85,11 @@ export async function runTurn(
     store.listTimedItemsSince(user.id, timingSince, TIMING_LIMIT),
   ]);
 
-  const out = await deps.brain.think({ user, items, history, input, now, doneToday, reminders, observations, mode, timed });
+  const kind = input.type === "message" ? "message" : "event";
+  const out = await deps.brain.think({
+    user, items, history, input, now, doneToday, reminders, observations, mode, timed,
+    onUsage: (u) => recordUsage(store, user.id, kind, u),
+  });
   await applyOutput(store, user, items, reminders, out, now, input);
 
   if (input.type === "message") {
@@ -259,7 +271,7 @@ export async function consolidate(deps: Deps, user: User, now: Date): Promise<bo
   const observations = await deps.store.listObservationsSince(user.id, since, 150);
   if (observations.length < 3) return false; // todavía no hay material para sacar patrones
 
-  const out = await deps.brain.consolidate({ user, observations, now });
+  const out = await deps.brain.consolidate({ user, observations, now, onUsage: (u) => recordUsage(deps.store, user.id, "memory", u) });
   const patch: Partial<User> = {};
   if (out.routines.length) patch.routines = out.routines.slice(0, MAX_ROUTINES);
   if (out.profile) patch.profile = out.profile;

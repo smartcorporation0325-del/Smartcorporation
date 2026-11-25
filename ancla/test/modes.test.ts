@@ -75,7 +75,7 @@ test("cada modo manda a Claude el modelo, el esfuerzo y el límite que le corres
 
   // El registro trae solo cifras y nombres, nunca contenido ni teléfonos
   assert.equal(logs.length, 4);
-  assert.match(logs[2], /^turno: modo=deep modelo=claude-opus-5-5 esfuerzo=xhigh \d+ms entrada=1200 salida=80 cache=1000$/);
+  assert.match(logs[2], /^turno: modo=deep modelo=claude-opus-5-5 esfuerzo=xhigh \d+ms entrada=1200 salida=80 cache=1000 costo=US\$0\.0170$/);
   assert.doesNotMatch(logs.join("\n"), /hola|58412/);
 });
 

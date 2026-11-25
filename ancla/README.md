@@ -118,6 +118,9 @@ Para que Ancla siga escribiendo aunque la persona lleve días callada, crea en e
 
 Sin plantilla, Ancla simplemente no escribe fuera de la ventana. No pasa nada: cuando la persona vuelva a escribir, todo sigue.
 
+## Cuánto cuesta cada persona
+Cada llamada a Claude (y cada nota de voz) deja una fila en la tabla `ancla_usage` con los tokens y el costo aproximado en dólares, sin el contenido de los mensajes. En Supabase, la vista `ancla_usage_daily` resume por persona y día: mensajes que escribió, mensajes que Ancla mandó por su cuenta, notas de voz y costo. Los precios están en `src/pricing.ts` (revisarlos si Anthropic u OpenAI los cambian). Cada línea `turno:` de los registros también muestra el costo. Sirve para poner precio a los planes con datos reales.
+
 ## Costos y modelo
 - Por defecto usa `claude-opus-5-5` con esfuerzo `low`. Para bajar costos prueba `ANTHROPIC_MODEL=claude-sonnet-5-5` y compara las respuestas en el simulador.
 - El system prompt se guarda en caché, así que la parte fija de cada mensaje cuesta mucho menos.

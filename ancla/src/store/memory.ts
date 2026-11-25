@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ChatMessage, Item, Observation, Reminder, User } from "../types.ts";
 import type { InboundMessage } from "../whatsapp.ts";
+import type { UsageRecord } from "../pricing.ts";
 import type { NewItem, NewReminder, PendingInbound, Store } from "./index.ts";
 
 /** Store en memoria: se pierde al reiniciar. Solo para desarrollo y tests. */
@@ -10,6 +11,7 @@ export class MemoryStore implements Store {
   messages: ChatMessage[] = [];
   seen = new Set<string>();
   pendingInbound = new Map<string, PendingInbound>();
+  usage: (UsageRecord & { at: string })[] = [];
   reminders = new Map<string, Reminder>();
   observations: Observation[] = [];
 
@@ -141,6 +143,10 @@ export class MemoryStore implements Store {
     if (u) {
       Object.assign(u, { notes: [], voice: "", routines: [], profile: "", people: [], energy: "unknown", focusItemId: null, checkinAt: null, companion: null });
     }
+  }
+
+  async addUsage(r: UsageRecord) {
+    this.usage.push({ ...r, at: new Date().toISOString() });
   }
 
   async claimInboundMessage(msg: InboundMessage) {

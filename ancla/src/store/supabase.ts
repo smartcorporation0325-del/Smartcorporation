@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { ChatMessage, Item, Observation, Reminder, User } from "../types.ts";
 import type { InboundMessage } from "../whatsapp.ts";
+import type { UsageRecord } from "../pricing.ts";
 import type { NewItem, NewReminder, PendingInbound, Store } from "./index.ts";
 
 // Mapeo entre columnas snake_case de Postgres (supabase/schema.sql) y los tipos camelCase.
@@ -284,6 +285,30 @@ export class SupabaseStore implements Store {
    * entonces solo se evita procesar duplicados, como antes, y no se recuperan mensajes a medias.
    */
   private inboundLegacy = false;
+
+  private usageTableMissing = false;
+
+  async addUsage(r: UsageRecord) {
+    if (this.usageTableMissing) return;
+    const res = await this.db.from("ancla_usage").insert({
+      user_id: r.userId,
+      kind: r.kind,
+      model: r.model,
+      input_tokens: r.inputTokens,
+      output_tokens: r.outputTokens,
+      cache_read_tokens: r.cacheReadTokens,
+      cache_write_tokens: r.cacheWriteTokens,
+      cost_usd: r.costUsd,
+    });
+    if (!res.error) return;
+    // 42P01 / PGRST205: la tabla no existe (falta correr el SQL). Se avisa una vez y se sigue sin medir.
+    if (res.error.code === "42P01" || res.error.code === "PGRST205") {
+      this.usageTableMissing = true;
+      console.warn("AVISO: falta la tabla ancla_usage (corre supabase/schema.sql); no se está midiendo el costo");
+      return;
+    }
+    throw new Error(`Supabase: ${res.error.message}`);
+  }
 
   async claimInboundMessage(msg: InboundMessage) {
     if (!this.inboundLegacy) {

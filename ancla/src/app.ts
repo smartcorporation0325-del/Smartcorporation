@@ -5,6 +5,7 @@ import { MAX_VOICE_CHARS, speechText, synthesize, ttsConfigured, voiceInstructio
 import { helpText, matchCommand, privacyText, welcomeText, WELCOME_BUTTONS } from "./onboarding.ts";
 import { dueEvent, dueReminders, withinServiceWindow, type DueEvent } from "./scheduler.ts";
 import { localParts } from "./time.ts";
+import { voiceCostUsd } from "./pricing.ts";
 import { transcribe } from "./transcribe.ts";
 import type { PendingInbound } from "./store/index.ts";
 import type { Reminder, TurnInput, User } from "./types.ts";
@@ -249,6 +250,12 @@ async function respond(deps: AppDeps, msg: InboundMessage, onReply: (r: { reply:
   const turn = await runTurn(deps, user, input, historyText, mode);
   await onReply(turn);
   const sentAs = await deliver(deps, msg.from, turn, true, voice ? { instructions: voiceInstructions(user) } : undefined);
+  if (sentAs === "voz") {
+    const chars = speechText(turn.reply).length;
+    deps.store
+      .addUsage({ userId: user.id, kind: "voice", model: "tts", inputTokens: chars, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: voiceCostUsd(chars) })
+      .catch(() => {});
+  }
   deps.log?.(`respuesta enviada (${turn.reply.length} caracteres, ${turn.quickReplies.length} botones${sentAs === "voz" ? ", voz" : ""})`);
 }
 

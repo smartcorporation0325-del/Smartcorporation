@@ -3,6 +3,7 @@ import { config } from "./config.ts";
 import { countryFromPhone } from "./dialect.ts";
 import { estimateFactor, minutesBetween, realisticMinutes, timingContext, timingSamples } from "./estimates.ts";
 import { MODE_LABEL, planFor, type Mode } from "./modes.ts";
+import { costUsd, type Usage } from "./pricing.ts";
 import { cleanQuickReplies } from "./quickReplies.ts";
 import { CONSOLIDATE_PROMPT, SYSTEM_PROMPT } from "./prompt.ts";
 import { localParts, whenPhrase } from "./time.ts";
@@ -19,6 +20,8 @@ export interface BrainContext {
   observations: Observation[]; // lo observado en los últimos días
   mode?: Mode; // cuánto razonar en esta respuesta (por defecto, normal)
   timed?: Item[]; // tareas terminadas con inicio y cálculo (estimador de tiempos)
+  /** Se llama con los tokens que gastó la llamada (para medir el costo por persona). */
+  onUsage?: (u: Usage) => void;
 }
 
 /** El "cerebro": decide qué responder y qué cambios hacer. Se puede sustituir en tests. */
@@ -26,6 +29,25 @@ export interface ConsolidationContext {
   user: User;
   observations: Observation[];
   now: Date;
+  onUsage?: (u: Usage) => void;
+}
+
+type ApiUsage = {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_input_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+};
+
+/** Tokens de una respuesta de la API (con el modelo que de verdad respondió, por si hubo respaldo). */
+function usageOf(response: { model?: string; usage: ApiUsage }, requested: string): Usage {
+  return {
+    model: response.model || requested,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+    cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
+    cacheWriteTokens: response.usage.cache_creation_input_tokens ?? 0,
+  };
 }
 
 export interface ConsolidationOutput {
@@ -448,10 +470,12 @@ export class ClaudeBrain implements Brain {
       },
     });
     // Solo cifras y nombres: nunca el contenido ni datos de la persona. Sirve para comparar modos.
+    const usage = usageOf(response, plan.model);
+    ctx.onUsage?.(usage);
     this.log?.(
       `turno: modo=${mode} modelo=${plan.model} esfuerzo=${plan.effort} ${Date.now() - started}ms ` +
         `entrada=${response.usage.input_tokens} salida=${response.usage.output_tokens} ` +
-        `cache=${response.usage.cache_read_input_tokens ?? 0}`,
+        `cache=${response.usage.cache_read_input_tokens ?? 0} costo=US$${costUsd(usage).toFixed(4)}`,
     );
 
     if (response.stop_reason === "refusal") {
@@ -493,6 +517,7 @@ export class ClaudeBrain implements Brain {
         format: { type: "json_schema", schema: CONSOLIDATE_SCHEMA as unknown as Record<string, unknown> },
       },
     });
+    ctx.onUsage?.(usageOf(response, config.model));
     if (response.stop_reason === "refusal") return none;
     const raw = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
     try {

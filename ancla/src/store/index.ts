@@ -1,5 +1,6 @@
 import type { ChatMessage, Item, Observation, Reminder, User } from "../types.ts";
 import type { InboundMessage } from "../whatsapp.ts";
+import type { UsageRecord } from "../pricing.ts";
 
 export type NewItem = Omit<Item, "id" | "createdAt" | "startedAt" | "doneAt" | "status">;
 export type NewReminder = Omit<Reminder, "id" | "status">;
@@ -46,6 +47,9 @@ export interface Store {
 
   /** Borra todo lo que Ancla sabe de la persona (conserva solo su número). */
   wipeUserData(userId: string): Promise<void>;
+
+  /** Registra lo que costó una llamada (solo cifras, nunca contenido). No debe romper un turno si falla. */
+  addUsage(r: UsageRecord): Promise<void>;
 
   /**
    * Devuelve true la primera vez que ve este mensaje (WhatsApp reintenta webhooks) y lo deja guardado

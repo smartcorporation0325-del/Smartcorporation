@@ -46,6 +46,9 @@ Aquí hay decisiones que son de la dueña del producto, no solo técnicas.
 - [ ] Términos de uso y política de privacidad completas (revisión profesional)
 - [ ] Revisión clínica del tono y del protocolo de crisis
 - [ ] Robustez para varias personas: cola de mensajes que sobreviva a reinicios (hoy vive en memoria y exige **una sola instancia**), límites de uso, monitoreo y copias de seguridad
+- [x] Medir el costo real por persona y por día (`ancla_usage`, vista `ancla_usage_daily`)
+- [ ] Planes (por funciones, con un límite de uso justo y aviso amable, sin contador visible) y cobro; precios a decidir con 1-2 semanas de datos reales
+- [ ] Probar Sonnet 5.5 en el modo rápido (`ANTHROPIC_FAST_MODEL`) para bajar costos
 - [ ] Cobro (suscripción) y página web con lista de espera
 - [ ] Panel web para ver y editar lo que Ancla sabe de cada persona
 - [ ] Medir: tareas iniciadas por semana (métrica estrella) y retención a 4 semanas
