@@ -1,4 +1,5 @@
 import { config } from "./config.ts";
+import { OutOfCreditsError } from "./brain.ts";
 import { consolidate, findOrCreateUser, runTurn, type Deps, type TurnResult } from "./handler.ts";
 import { chooseMode } from "./modes.ts";
 import { MAX_VOICE_CHARS, speechText, synthesize, ttsConfigured, voiceInstructions } from "./tts.ts";
@@ -82,6 +83,10 @@ export const STUCK_AFTER_MS = 3 * 60_000;
 // Más viejo que esto ya no tiene sentido contestarlo como si nada: se pide que lo repita.
 const STALE_AFTER_MS = 12 * 60 * 60_000;
 
+// Sin saldo en Anthropic: a quién ya se le avisó que Ancla está en pausa (para avisar una sola vez).
+const pauseNoticeAt = new Map<string, number>();
+const PAUSE_NOTICE_EVERY_MS = 12 * 60 * 60_000;
+
 // Mensajes que este servidor está procesando ahora (para no tomarlos dos veces y para apagarse con calma).
 const inFlight = new Set<string>();
 export const inFlightCount = () => inFlight.size;
@@ -114,8 +119,24 @@ async function processInbound(deps: AppDeps, p: PendingInbound, retry = false): 
       }
     });
     await deps.store.finishInbound(msg.id, "done");
+    pauseNoticeAt.delete(msg.from);
     if (retry) deps.log?.(`mensaje recuperado (intento ${p.attempts})`);
   } catch (err) {
+    if (err instanceof OutOfCreditsError) {
+      // No es culpa del mensaje: no cuenta como intento y espera (hasta 12 h) a que vuelva el saldo.
+      deps.log?.("SIN SALDO en Anthropic: el mensaje queda guardado hasta que se recargue (console.anthropic.com → Billing)");
+      const back = { ...p, attempts: Math.max(0, p.attempts - 1) };
+      await deps.store.updatePendingInbound(back).catch(() => {});
+      const last = pauseNoticeAt.get(msg.from) ?? 0;
+      const now = (deps.now?.() ?? new Date()).getTime();
+      if (now - last > PAUSE_NOTICE_EVERY_MS) {
+        pauseNoticeAt.set(msg.from, now);
+        await deps.sender
+          .sendText(msg.from, "Estoy en una pausa técnica cortita 🙈 Guardé tu mensaje y te respondo apenas vuelva, no tienes que repetirlo.")
+          .catch(() => {});
+      }
+      return;
+    }
     deps.log?.(`mensaje falló (intento ${p.attempts} de ${MAX_INBOUND_ATTEMPTS}): ${(err as Error).message}`);
     if (p.attempts >= MAX_INBOUND_ATTEMPTS) {
       await giveUp(deps, p);
@@ -322,7 +343,18 @@ async function sendProactive(deps: AppDeps, user: User, ev: DueEvent, now: Date,
       : ev === "companion_end"
         ? { type: "event", name: "companion_end", session: session! }
         : { type: "event", name: ev };
-  const turn = await runTurn(turnDeps, fresh, input);
+  let turn: TurnResult;
+  try {
+    turn = await runTurn(turnDeps, fresh, input);
+  } catch (err) {
+    // Sin saldo: se deshace la marca para que el buenos días, el cierre o el check-in salgan cuando vuelva.
+    if (err instanceof OutOfCreditsError && mark) {
+      const undo: Partial<User> = {};
+      for (const k of Object.keys(mark) as (keyof User)[]) (undo as Record<string, unknown>)[k] = user[k] ?? null;
+      await deps.store.updateUser(user.id, undo).catch(() => {});
+    }
+    throw err;
+  }
   // Si el cerebro falla antes de llegar aquí, el recordatorio sigue pendiente y se reintenta en el próximo tick.
   if (ev === "reminder") await deps.store.setReminderStatus(reminders.map((r) => r.id), "sent");
   await deliver(deps, user.phone, turn, inWindow);

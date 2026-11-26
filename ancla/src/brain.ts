@@ -441,6 +441,22 @@ export function emptyOutput(reply: string): BrainOutput {
   return normalizeOutput({ reply });
 }
 
+/** La cuenta de Anthropic se quedó sin saldo: no es culpa del mensaje, hay que esperar a que se recargue. */
+export class OutOfCreditsError extends Error {
+  constructor() {
+    super("Anthropic sin saldo: recarga en console.anthropic.com → Billing");
+    this.name = "OutOfCreditsError";
+  }
+}
+
+/** Convierte el error de saldo agotado (400 "credit balance is too low") en OutOfCreditsError. */
+function rethrowCredits(err: unknown): never {
+  if (err instanceof Anthropic.APIError && (err.status === 400 || err.status === 402) && /credit balance/i.test(err.message)) {
+    throw new OutOfCreditsError();
+  }
+  throw err;
+}
+
 /** Implementación con Claude: una llamada por turno con salida estructurada (JSON Schema). */
 export class ClaudeBrain implements Brain {
   private client: Anthropic;
@@ -458,7 +474,8 @@ export class ClaudeBrain implements Brain {
     // seguridad rechaza la petición, la API la reintenta sola en el modelo de respaldo).
     const withFallback = !/haiku/i.test(plan.model);
     const started = Date.now();
-    const response = await this.client.beta.messages.create({
+    const response = await this.client.beta.messages
+      .create({
       model: plan.model,
       max_tokens: plan.maxTokens,
       ...(withFallback ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
@@ -468,7 +485,8 @@ export class ClaudeBrain implements Brain {
         effort: plan.effort,
         format: { type: "json_schema", schema: OUTPUT_SCHEMA as unknown as Record<string, unknown> },
       },
-    });
+      })
+      .catch(rethrowCredits);
     // Solo cifras y nombres: nunca el contenido ni datos de la persona. Sirve para comparar modos.
     const usage = usageOf(response, plan.model);
     ctx.onUsage?.(usage);
@@ -505,7 +523,8 @@ export class ClaudeBrain implements Brain {
       }),
     ].join("\n");
 
-    const response = await this.client.beta.messages.create({
+    const response = await this.client.beta.messages
+      .create({
       model: config.model,
       max_tokens: 4000,
       betas: ["server-side-fallback-2026-07-01"],
@@ -516,7 +535,8 @@ export class ClaudeBrain implements Brain {
         effort: "medium",
         format: { type: "json_schema", schema: CONSOLIDATE_SCHEMA as unknown as Record<string, unknown> },
       },
-    });
+      })
+      .catch(rethrowCredits);
     ctx.onUsage?.(usageOf(response, config.model));
     if (response.stop_reason === "refusal") return none;
     const raw = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");

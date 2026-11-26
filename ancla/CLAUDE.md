@@ -31,6 +31,8 @@ No es un agente autónomo: no tiene herramientas libres (no navega, no manda cor
 ## Mensajes que no se pierden
 Cada mensaje entrante se guarda como pendiente en `ancla_inbound_ids` (con su contenido) antes de procesarlo, y se cierra (borrando contenido y número) al contestar. La respuesta del cerebro se guarda antes de enviarla, para no repetir acciones si solo falla el envío. Lo que queda a medias más de 3 min lo retoma `recoverInbound` (en cada tick y al arrancar), con la hora original del mensaje; tras 3 intentos o 12 h se le pide a la persona que lo repita. Con `SIGTERM` el servidor espera hasta 25 s a que terminen los mensajes en curso. Si la base no tiene aún las columnas nuevas, funciona como antes (solo evita duplicados).
 
+Si la cuenta de Anthropic se queda sin saldo, `brain.ts` lanza `OutOfCreditsError`: el mensaje queda guardado sin gastar intentos (hasta 12 h), la persona recibe un solo aviso de "pausa técnica" y se contesta en cuanto vuelve el saldo; el buenos días, el cierre y los check-ins no se dan por enviados.
+
 Al arrancar, `ensureWebhookSubscription` (whatsapp.ts) reconecta la cuenta de WhatsApp Business a la app (`POST /{WABA}/subscribed_apps`) si existe `WHATSAPP_BUSINESS_ACCOUNT_ID`. El 23 de noviembre de 2026 Meta dejó de entregar los mensajes reales (desde la noche anterior) aunque el webhook estaba bien y el botón **Test** sí llegaba; la app figuraba suscrita, pero justo después de volver a suscribirla los mensajes volvieron a llegar.
 
 ## Límites conocidos
