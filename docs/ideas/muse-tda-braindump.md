@@ -161,6 +161,8 @@ Métricas secundarias: retención a 4 semanas y "¿te sentiste peor o mejor cont
 
 | Producto | Qué es (según ellos) | Se parece a Ancla en |
 |---|---|---|
+| [Memorae](https://www.producthunt.com/products/memorae) | Asistente de IA en WhatsApp para recordatorios, listas y calendario (de España, en español); plan gratis limitado y pago (según terceros, ~US$3,6/mes o ~US$72/año) | Canal, idioma y recordatorios; no está hecho para TDA |
+| [Zapia](https://zapia.com) | Asistente de IA general en WhatsApp para Latinoamérica | Canal e idioma |
 | [Ping.me](https://www.producthunt.com/products/ping-me-2) | Asistente de recordatorios para TDAH dentro de WhatsApp, con memoria | Canal y recordatorios (el más cercano) |
 | [Sihem](https://www.indiehackers.com/product/sihem) | Mentor de IA en Telegram, tranquilo y sin juicios | Tono y canal |
 | [Ari](https://apps.apple.com/us/app/-/id6742913457), [Helpz](https://play.google.com/store/apps/details?id=com.helpz), [Zoe](https://www.producthunt.com/products/ping-me-2) | Coaches de IA con check-ins | Check-ins |
